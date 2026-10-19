@@ -4,9 +4,11 @@ Design and KPI definitions follow the Marketing 3.0 KPI deck: dark Razza report 
 cost per 1,000 reached, video view-through), the Awareness Trend page, organic social (engagement rate = engagements / reach), and
 key takeaway boxes. Awareness is reported as delivery and cost: reach measures exposure, not recall.
 
-Run:  cd bpp_dashboard && ../.venv/bin/streamlit run app.py     (needs data/bpp_snapshot.json, git-ignored)
+Run:  cd bpp_dashboard && ../.venv/bin/streamlit run app.py     (reads Supabase via .streamlit/secrets.toml, or the local snapshot data/bpp_snapshot.json)
 """
 import html
+import os
+from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -70,17 +72,37 @@ div[data-testid="stTabs"] button[role="tab"] {{ font-weight:700; font-size:14px;
     unsafe_allow_html=True,
 )
 
-if not D.snapshot_exists():
-    st.error("data/bpp_snapshot.json is missing. This prototype reads a snapshot of the BPP Content SSOT that is not stored in the repository. See README.md.")
-    st.stop()
+_secret_files = [Path(__file__).parent / ".streamlit" / "secrets.toml", Path.cwd() / ".streamlit" / "secrets.toml", Path.home() / ".streamlit" / "secrets.toml"]
+_conf = None
+if any(f.exists() for f in _secret_files):  # only then touch st.secrets (Streamlit shows a red "No secrets found" box otherwise)
+    try:
+        _conf = dict(st.secrets["supabase"]) if "supabase" in st.secrets else None
+    except Exception:
+        _conf = None
+if _conf is None and os.environ.get("PULSE_DB_HOST"):  # self-hosted: the same settings as environment variables
+    _env = {k: os.environ.get(v) for k, v in (("host", "PULSE_DB_HOST"), ("user", "PULSE_DB_USER"), ("password", "PULSE_DB_PASSWORD"))}
+    if all(_env.values()):
+        _conf = {**_env, "port": os.environ.get("PULSE_DB_PORT", "5432"), "dbname": os.environ.get("PULSE_DB_NAME", "postgres"), "sslmode": os.environ.get("PULSE_DB_SSLMODE", "require")}
 
 
-@st.cache_data(show_spinner="Loading BPP data...")
-def load():
-    return D.load_snapshot()
+@st.cache_data(ttl=300, show_spinner="Loading BPP data...")
+def load(conf):
+    return D.load(conf)
 
 
-S = load()
+try:
+    if not _conf and not D.snapshot_exists():
+        raise RuntimeError("no database settings and no local data snapshot")
+    S = load(_conf)
+except Exception as e:  # database unreachable or wrong password: show the local snapshot if there is one, loudly
+    _why = f"{type(e).__name__}: {str(e).strip().splitlines()[0][:160]}"
+    if not D.snapshot_exists():
+        st.error(f"The dashboard could not load its data ({_why}). Check the [supabase] secrets (host, user, password) of this app, or ask the dashboard owner. See README.md.")
+        st.stop()
+    if not _conf:
+        raise
+    st.warning(f"Supabase could not be reached ({_why}). Showing the local snapshot instead, which may be out of date.")
+    S = load(None)
 ADS, POSTS, TT = S["ads"], S["posts"], S["tiktok"]
 MONTHS = sorted(ADS["month"].unique())
 LAST = D.last_full_month(ADS, S["built_at"])
@@ -144,7 +166,7 @@ def header(eyebrow, green, white, sub=None):
         if sub:
             st.markdown(f'<div class="sub">{sub}</div>', unsafe_allow_html=True)
     with right:
-        st.markdown(f'<div style="text-align:right;margin-top:26px"><span class="pill">Snapshot {S["built_at"]:%d %b %Y}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="text-align:right;margin-top:26px"><span class="pill">Data as of {S["built_at"]:%d %b %Y}</span></div>', unsafe_allow_html=True)
 
 
 def ctitle(text):
@@ -202,7 +224,7 @@ with st.sidebar:
     st.selectbox("Quick range", list(_presets()), key="preset", on_change=_on_preset)
     st.selectbox("From month", MONTHS, key="m0", format_func=mlabel)
     st.selectbox("To month", MONTHS, key="m1", format_func=mlabel)
-    st.caption(f"Source: BPP Content SSOT snapshot ({S['built_at']:%d %b %Y}). The Ads Manager exports are monthly, so this view works in whole months.")
+    st.caption(f"Source: {S['source']}. The Ads Manager exports are monthly, so this view works in whole months.")
     with st.expander("How the numbers are defined"):
         st.markdown(
             "Follows the Marketing 3.0 KPI deck, Paid awareness module.\n"
@@ -224,7 +246,7 @@ RANGE = mlabel(M0) if M0 == M1 else f"{mlabel(M0)} to {mlabel(M1)}"
 VS = mlabel(P0) if P0 == P1 else f"prior {(M1 - M0).n + 1} months"
 HAS_PRIOR = P0 >= MONTHS[0]
 if M1 >= BUILT_MONTH:
-    st.warning(f"{mlabel(M1)} was still running when the snapshot was built ({S['built_at']:%d %b}): its numbers are partial.")
+    st.warning(f"{mlabel(M1)} was still running when the data was loaded ({S['built_at']:%d %b}): its numbers are partial.")
 
 cur = D.paid(ADS, M0, M1)
 pre = D.paid(ADS, P0, P1) if HAS_PRIOR else None

@@ -1,6 +1,8 @@
 """BPP (Budol-Proof Pinoy) brand awareness data layer.
 
-Prototype source: data/bpp_snapshot.json, built from the BPP Content SSOT (git-ignored, real client data):
+Source: Supabase schema pulse (tables social_ads_monthly, fb_posts, tiktok_videos and the BPP rows of ad_spend_monthly), read with the read-only
+pulse_reader_bpp login, which can only see account_code = BPP. Without database settings, a local data/bpp_snapshot.json is used
+(built from the BPP Content SSOT; git-ignored, real client data, development only):
   ads     Ads Manager exports, one row per campaign (or ad) and month, Aug 2025 to now (spend, impressions, reach, ThruPlays, engagements)
   posts   Facebook page posts (views, reach, engagements), one row per post
   tiktok  TikTok videos (views, likes, comments, shares, engagement)
@@ -25,9 +27,9 @@ def snapshot_exists() -> bool:
     return SNAPSHOT.exists()
 
 
-def load_snapshot(path: Path = SNAPSHOT) -> dict:
-    raw = json.loads(Path(path).read_text())
-    ads, posts, tt = pd.DataFrame(raw["ads"]), pd.DataFrame(raw["posts"]), pd.DataFrame(raw["tiktok"])
+def _prepare(ads, posts, tt, ref, built_at, source) -> dict:
+    """Same typing and derived columns whether the rows come from Supabase or from the snapshot."""
+    ads, posts, tt = ads.copy(), posts.copy(), tt.copy()
     for c in ["spend", "impressions", "reach", "thruplays", "post_engagements", "shares", "reactions", "saves", "comments", "fb_likes", "clicks_all"]:
         ads[c] = pd.to_numeric(ads[c], errors="coerce")
     ads["month"] = pd.to_datetime(ads["start"]).dt.to_period("M")
@@ -36,12 +38,58 @@ def load_snapshot(path: Path = SNAPSHOT) -> dict:
         posts[c] = pd.to_numeric(posts[c], errors="coerce")
     posts["published"] = pd.to_datetime(posts["published"])
     posts["month"] = posts["published"].dt.to_period("M")
+    posts["permalink"] = posts["permalink"].fillna("")
+    posts["title"] = posts["title"].fillna("")
     for c in ["views", "likes", "comments", "shares", "engagement"]:
         tt[c] = pd.to_numeric(tt[c], errors="coerce")
     tt["posted"] = pd.to_datetime(tt["posted"])
     tt["month"] = tt["posted"].dt.to_period("M")
-    ref = {pd.Period(k, "M"): v for k, v in raw.get("ad_spend_report", {}).items()}
-    return {"ads": ads, "posts": posts, "tiktok": tt, "ref": ref, "built_at": pd.Timestamp(raw["built_at"]).tz_convert(None)}
+    tt["link"] = tt["link"].fillna("")
+    return {"ads": ads, "posts": posts, "tiktok": tt, "ref": {pd.Period(k, "M"): float(v) for k, v in ref.items()}, "built_at": built_at, "source": source}
+
+
+def load_snapshot(path: Path = SNAPSHOT) -> dict:
+    raw = json.loads(Path(path).read_text())
+    built = pd.Timestamp(raw["built_at"]).tz_convert(None)
+    return _prepare(pd.DataFrame(raw["ads"]), pd.DataFrame(raw["posts"]), pd.DataFrame(raw["tiktok"]), raw.get("ad_spend_report", {}), built,
+                    f"BPP Content SSOT snapshot ({built:%d %b %Y})")
+
+
+SQL = {
+    "ads": 'select source_tab as tab, level, reporting_start as "start", reporting_end as "end", name, delivery, result_indicator, spend, impressions, reach, '
+           "thruplays, post_engagements, shares, reactions, saves, comments, fb_likes, clicks_all from pulse.social_ads_monthly where account_code = 'BPP' order by id",
+    "posts": "select post_id, published, title, type, duration, views, reach, engagements, reactions, comments, shares, clicks, permalink "
+             "from pulse.fb_posts where account_code = 'BPP'",
+    "tiktok": "select title, link, posted, views, likes, comments, shares, engagement from pulse.tiktok_videos where account_code = 'BPP'",
+    "ref": "select month_start, spend_php from pulse.ad_spend_monthly where account_code = 'BPP' and client_code = 'BPP-FB' and source_tab = 'Summary'",
+}
+
+
+def _query(conf: dict) -> dict:
+    """Read-only queries with the pulse_reader_bpp login (it can only SELECT BPP rows)."""
+    import psycopg2
+
+    con = psycopg2.connect(host=conf["host"], port=int(conf.get("port", 5432)), dbname=conf.get("dbname", "postgres"), user=conf["user"], password=conf["password"],
+                           sslmode=conf.get("sslmode", "require"), connect_timeout=10, options="-c default_transaction_read_only=on")
+    try:
+        out = {}
+        with con.cursor() as cur:
+            for name, sql in SQL.items():
+                cur.execute(sql)
+                out[name] = pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
+        return out
+    finally:
+        con.close()
+
+
+def load_db(conf: dict) -> dict:
+    raw = _query(conf)
+    ref = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in raw["ref"].itertuples()}
+    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), "Supabase (live)")
+
+
+def load(conf: dict | None = None) -> dict:
+    return load_db(conf) if conf else load_snapshot()
 
 
 def _div(a, b):

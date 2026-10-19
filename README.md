@@ -16,7 +16,7 @@ Colour scheme and font follow the Project Swarm 2026 Year-to-Date Report deck (v
 cd bpp_dashboard
 ../.venv/bin/streamlit run app.py
 ```
-It needs `data/bpp_snapshot.json` (real client data, git-ignored, never commit). Without it the app says so and stops.
+The app reads Supabase when it finds `[supabase]` settings (`.streamlit/secrets.toml`, or `PULSE_DB_*` environment variables), using the read-only `pulse_reader_bpp` login. Without settings it falls back to a local, git-ignored `data/bpp_snapshot.json` if present, otherwise it shows an error box. Hosting: see `DEPLOY.md`.
 
 ## Data
 `data/bpp_snapshot.json` was built on 2026-10-19 from the BPP Content SSOT (Google Sheet):
@@ -41,4 +41,4 @@ Follows the deck's Paid awareness definitions, with these differences, all state
 Weekly reach, target audiences, follower growth, brand health (branded search, brand lift, survey). The "Targets" tab (`Tables`) of the SSOT holds Aug and Sep **2025** figures, so it is not used.
 
 ## Hosting
-Not deployable as is: the snapshot is git-ignored. To host it (for example on Streamlit Community Cloud) the BPP data has to go into Supabase first (the same sheets to Supabase work as for PediaWell), and the app then reads it with a read-only login.
+Streamlit Community Cloud as its own app from the private repo `clclyde/bpp-awareness-dashboard`; the data lives in Supabase (tables `social_ads_monthly`, `fb_posts`, `tiktok_videos`). Steps in `DEPLOY.md`.

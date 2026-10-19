@@ -1,0 +1,10 @@
+# BPP brand awareness dashboard: project context
+
+Own project (private repo `clclyde/bpp-awareness-dashboard`, separate from the PediaWell dashboard). Streamlit 1.38.0 prototype for BPP (Budol-Proof Pinoy: Facebook page and TikTok), requested by Sir Joven.
+
+- Design: Project Swarm 2026 YTD Report look (white, navy #073763, blue #0B3691, yellow #F1C232, red #D10000, text #3F3F3F, Montserrat); layout follows the Marketing 3.0 KPI deck slides 36 (Modules, Paid awareness cards) and 37 (Awareness Trend). Tabs: Page one, Awareness trend, Content.
+- Data: Supabase `pulse.social_ads_monthly`, `fb_posts`, `tiktok_videos` and BPP rows of `ad_spend_monthly`, read with the read-only `pulse_reader_bpp` login (secrets or `PULSE_DB_*` env vars). Local fallback: git-ignored `data/bpp_snapshot.json`. Source of the data: BPP Content SSOT sheet (Ads Manager exports, Facebook post tabs, YTD TikTok tab).
+- Definitions follow the deck: reach is the sum of campaign reach rows (overstates unique reach), monthly not weekly, no target audience yet (card pending); frequency = impressions / reach; cost per 1,000 reached = spend / reach x 1,000 (reach campaigns only in comparisons); engagement rate = (reactions + comments + shares) / reach; TikTok has views only. Aug and Sep 2025 figures in the SSOT "Tables" tab are 2025, not targets.
+- Known data gaps: Feb, Apr and May 2026 Ads Manager exports are incomplete (spend below the Ad Spend Report; shown yellow on the trend charts); March 2026 is exported per ad; the JUL - Meta tab header is broken (handled).
+- Rules: never commit `data/` or `secrets.toml`; only the read-only BPP login in the app; never ask for or print passwords; run with `../.venv/bin/streamlit run app.py` or a Python 3.12 venv; verify changes by running the app and checking September 2026 (spend 19,458.54, reach 1,014,541, cost per 1,000 reached 19.18).
+- Open items: target audiences and weekly reach (not in the SSOT), sentiment tab, follower growth, brand health, an n8n loader to refresh the Supabase tables.

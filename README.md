@@ -8,6 +8,9 @@ The Marketing 3.0 KPI deck (Example Reports): the dark Razza style, the **Module
 2. **Awareness trend**: reach, frequency, cost per 1,000 reached and video view-through by month, and a paid campaigns table.
 3. **Content**: top Facebook posts by reach, performance by post type, engagement rate by month, top TikTok videos.
 
+## Look and feel
+Colour scheme and font follow the Project Swarm 2026 Year-to-Date Report deck (values read from the deck file, not estimated): white background, navy `#073763` (headings, cards, table headers, top bar), title blue `#0B3691` (chart lines), yellow `#F1C232` (title highlight, section marks, incomplete-month markers), red `#D10000` (bottom bar, negative changes), text `#3F3F3F`, status green `#93C47D`. Font: **Montserrat** (the deck's main font), loaded from Google Fonts, with Open Sans as fallback. The PediaWell dashboard keeps its own dark design.
+
 ## Run
 ```bash
 cd bpp_dashboard

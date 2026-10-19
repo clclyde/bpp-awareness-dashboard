@@ -16,49 +16,55 @@ import data as D
 
 st.set_page_config(page_title="BPP Brand Awareness Review", page_icon=":bar_chart:", layout="wide")
 
-BG, CARD, LINE = "#1a2023", "#232a2f", "#323b41"
-TEXT, MUTED = "#ffffff", "#a9b4bb"
-GREEN, AMBER, RED, GREY = "#92d050", "#f6b73c", "#e0605e", "#8f9aa1"
-BLUE, TEAL = "#3b82f6", "#1fa67a"
+# Project Swarm palette, read from the deck file: navy 073763, title blue 0B3691, yellow F1C232, red D10000, text 3F3F3F, green 93C47D (status dots)
+BG, CARD, LINE = "#FFFFFF", "#F3F6FA", "#DCE3EA"
+TEXT, MUTED = "#3F3F3F", "#737373"
+NAVY, BLUE, YELLOW, RED, GREEN, GREY = "#073763", "#0B3691", "#F1C232", "#D10000", "#93C47D", "#A6B8C6"
+GOOD_TXT = "#3D8B37"   # darker green for text on white (the deck's green is a fill colour)
+AMBER = YELLOW
 
 st.markdown(
     f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap');
-html, body, [class*="css"], .stApp {{ font-family: 'Lato', sans-serif; }}
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Open+Sans:wght@400;600&display=swap');
+html, body, .stApp, .stApp :not([data-testid="stIconMaterial"]):not(svg):not(path) {{ font-family: 'Montserrat', 'Open Sans', sans-serif !important; }}
+[data-testid="stIconMaterial"] {{ font-family: 'Material Symbols Rounded' !important; }}
 .stApp {{ background: {BG}; color: {TEXT}; }}
+.stApp::before {{ content:""; position:fixed; top:0; left:0; width:38%; height:10px; background:{NAVY}; z-index:999; pointer-events:none; }}
+.stApp::after {{ content:""; position:fixed; bottom:0; right:0; width:50%; height:10px; background:{RED}; z-index:999; pointer-events:none; }}
 header[data-testid="stHeader"] {{ background: transparent; }}
-.block-container {{ padding-top: 2.2rem; max-width: 1240px; }}
-section[data-testid="stSidebar"] {{ background: #151b1d; border-right: 1px solid {LINE}; }}
-.eyebrow {{ color: {MUTED}; font-size: 15px; margin-bottom: 2px; }}
-.h1 {{ font-weight: 900; font-size: 40px; line-height: 1.1; color: {GREEN}; margin: 0; }}
-.h1 span {{ color: {TEXT}; }}
+.block-container {{ padding-top: 2.6rem; padding-bottom: 3rem; max-width: 1240px; }}
+section[data-testid="stSidebar"] {{ background: {CARD}; border-right: 1px solid {LINE}; }}
+.eyebrow {{ color: {MUTED}; font-size: 13px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; margin-bottom: 2px; }}
+.h1 {{ font-weight: 500; font-size: 28px; line-height: 1.2; color: {NAVY}; margin: 0; letter-spacing:.3px; }}
+.h1 span {{ color: {YELLOW}; font-weight: 800; }}
 .sub {{ color: {MUTED}; font-size: 14px; margin: 6px 0 14px 0; }}
-.pill {{ display:inline-block; background:#394147; color:#fff; font-weight:700; font-size:12px; letter-spacing:.4px; border-radius:999px; padding:9px 22px; text-transform:uppercase; }}
+.pill {{ display:inline-block; background:{NAVY}; color:#fff; font-weight:700; font-size:11px; letter-spacing:.8px; border-radius:999px; padding:9px 20px; text-transform:uppercase; }}
 .cards {{ display:grid; gap:14px; margin: 6px 0 12px 0; }}
 .c5 {{ grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }} .c4 {{ grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }}
-.card {{ background:{CARD}; border-radius:12px; padding:16px 18px 14px 18px; border:1px solid {LINE}; }}
-.card .lab {{ color:{MUTED}; font-size:14px; font-weight:700; display:flex; justify-content:space-between; align-items:center; }}
-.card .val {{ font-size:34px; font-weight:900; margin:10px 0 12px 0; letter-spacing:-.5px; white-space:nowrap; }}
-.card .ln1 {{ font-size:13px; font-weight:700; }} .card .ln2 {{ font-size:13px; color:{MUTED}; margin-top:2px; }}
+.card {{ background:{CARD}; border-radius:12px; padding:16px 18px 14px 18px; border:1px solid {LINE}; border-top:4px solid {NAVY}; }}
+.card .lab {{ color:{MUTED}; font-size:11.5px; min-height:30px; font-weight:600; display:flex; justify-content:space-between; align-items:center; }}
+.card .val {{ font-size:25px; font-weight:800; margin:10px 0 12px 0; letter-spacing:-.5px; white-space:nowrap; color:{NAVY}; }}
+.card .ln1 {{ font-size:11.5px; font-weight:600; }} .card .ln2 {{ font-size:11.5px; color:{MUTED}; margin-top:2px; }}
 .dot {{ width:14px; height:14px; border-radius:50%; display:inline-block; }}
-.good {{ color:{GREEN}; }} .bad {{ color:{RED}; }} .neutral {{ color:{MUTED}; }}
-.sec {{ color:{GREEN}; font-weight:900; font-size:13px; letter-spacing:.6px; text-transform:uppercase; margin:18px 0 0 0; }}
-.sec small {{ color:{MUTED}; font-weight:400; text-transform:none; letter-spacing:0; font-size:13px; margin-left:8px; }}
-.ctitle {{ font-weight:900; font-size:15px; margin:6px 0 2px 0; }}
-.take {{ background:{CARD}; border:1.5px solid {GREEN}; border-radius:14px; padding:18px 20px; font-size:15px; line-height:1.5; }}
-.take .k {{ color:{GREEN}; font-weight:900; font-size:12px; letter-spacing:.6px; text-transform:uppercase; margin-bottom:4px; }}
+.good {{ color:{GOOD_TXT}; font-weight:600; }} .bad {{ color:{RED}; font-weight:600; }} .neutral {{ color:{MUTED}; }}
+.sec {{ color:{NAVY}; font-weight:800; font-size:13px; letter-spacing:.8px; text-transform:uppercase; margin:22px 0 4px 0; border-left:5px solid {YELLOW}; padding-left:10px; }}
+.sec small {{ color:{MUTED}; font-weight:500; text-transform:none; letter-spacing:0; font-size:12.5px; margin-left:8px; }}
+.ctitle {{ font-weight:700; font-size:14px; margin:6px 0 2px 0; color:{NAVY}; }}
+.take {{ background:{BG}; border:1.5px solid {NAVY}; border-left:8px solid {YELLOW}; border-radius:12px; padding:18px 20px; font-size:14px; line-height:1.55; }}
+.take .k {{ color:{BLUE}; font-weight:800; font-size:11.5px; letter-spacing:.8px; text-transform:uppercase; margin-bottom:4px; }}
 .take p {{ margin: 0 0 12px 0; }}
-.legend {{ display:flex; gap:34px; color:{MUTED}; font-size:13px; margin:6px 0 4px 0; flex-wrap:wrap; }}
+.legend {{ display:flex; gap:34px; color:{MUTED}; font-size:12.5px; margin:6px 0 4px 0; flex-wrap:wrap; }}
 .legend .dot {{ width:12px; height:12px; margin-right:8px; vertical-align:-1px; }}
-.note {{ color:{MUTED}; font-size:13px; line-height:1.5; margin:8px 0; }}
-table.t {{ width:100%; border-collapse:collapse; font-size:14px; margin:8px 0; }}
-table.t th {{ color:{GREEN}; text-align:left; font-weight:900; padding:10px 12px; border-bottom:1px solid {LINE}; background:#1f262a; }}
-table.t td {{ padding:11px 12px; border-bottom:1px solid {LINE}; background:{CARD}; vertical-align:top; }}
+.note {{ color:{MUTED}; font-size:12px; line-height:1.55; margin:8px 0; }}
+table.t {{ width:100%; border-collapse:collapse; font-size:12px; margin:8px 0; }}
+table.t th {{ color:#fff; text-align:left; font-weight:700; padding:10px 12px; background:{NAVY}; }}
+table.t td {{ padding:10px 12px; border-bottom:1px solid {LINE}; background:{BG}; vertical-align:top; }}
+table.t tr:nth-child(even) td {{ background:{CARD}; }}
 table.t td.r, table.t th.r {{ text-align:right; }}
-table.t td.b {{ font-weight:900; }}
-table.t a {{ color:{MUTED}; text-decoration:none; }} table.t a:hover {{ color:{GREEN}; }}
-div[data-testid="stTabs"] button[role="tab"] {{ font-weight:700; font-size:15px; }}
+table.t td.b {{ font-weight:700; color:{NAVY}; }}
+table.t a {{ color:{NAVY}; text-decoration:none; }} table.t a:hover {{ color:{BLUE}; text-decoration:underline; }}
+div[data-testid="stTabs"] button[role="tab"] {{ font-weight:700; font-size:14px; }}
 </style>
 """,
     unsafe_allow_html=True,
@@ -163,10 +169,10 @@ def table(headers, rows, aligns):
 
 def style_fig(fig, height=300, legend_on=True, tickprefix="", ticksuffix="", tickformat=None):
     fig.update_layout(height=height, margin=dict(l=8, r=54, t=10, b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                      font=dict(color="#d7dde1", family="Lato, sans-serif", size=13), showlegend=legend_on,
+                      font=dict(color=TEXT, family="Montserrat, Open Sans, sans-serif", size=12), showlegend=legend_on,
                       legend=dict(orientation="h", y=-0.16, x=0.5, xanchor="center"), hoverlabel=dict(bgcolor=CARD, font_color=TEXT))
     fig.update_xaxes(showgrid=False, linecolor=LINE, tickfont=dict(color=MUTED), tickangle=0)
-    fig.update_yaxes(gridcolor="#2c353a", zeroline=False, tickfont=dict(color=MUTED), tickprefix=tickprefix, ticksuffix=ticksuffix, tickformat=tickformat)
+    fig.update_yaxes(gridcolor="#E6EBF1", zeroline=False, tickfont=dict(color=MUTED), tickprefix=tickprefix, ticksuffix=ticksuffix, tickformat=tickformat)
     return fig
 
 
@@ -289,8 +295,8 @@ with tabs[1]:
     xs = [m.to_timestamp() for m in pm.index]
     CHK = D.spend_check(ADS, S["ref"])
     GAPS = set(CHK[CHK["difference"] < -1].index)   # months whose Ads Manager export has less spend than the Ad Spend Report: probably incomplete
-    mk = dict(size=9, color=[AMBER if m in GAPS else BLUE for m in pm.index], line=dict(width=0))
-    mk2 = dict(size=9, color=[AMBER if m in GAPS else TEAL for m in pm.index], line=dict(width=0))
+    mk = dict(size=10, color=[YELLOW if m in GAPS else BLUE for m in pm.index], line=dict(width=1.5, color=NAVY))
+    mk2 = dict(size=10, color=[YELLOW if m in GAPS else NAVY for m in pm.index], line=dict(width=1.5, color=NAVY))
     a, b = st.columns(2)
     with a:
         ctitle("Monthly reach, sum of campaign reach")
@@ -306,14 +312,14 @@ with tabs[1]:
     with c:
         ctitle("Cost per 1,000 reached (₱)")
         fig = go.Figure(go.Scatter(x=xs, y=pm["cpr"], mode="lines+markers+text", text=[f"₱{v:,.1f}" for v in pm["cpr"]], textposition="top center",
-                                   textfont=dict(color=TEAL, size=11), line=dict(color=TEAL, width=3), marker=mk2, name="Cost per 1,000 reached"))
+                                   textfont=dict(color=NAVY, size=11), line=dict(color=NAVY, width=3), marker=mk2, name="Cost per 1,000 reached"))
         show(month_axis(style_fig(fig, 300, legend_on=False, tickprefix="₱", tickformat=",.0f")), "tr3")
     with d:
         ctitle("Video view-through (ThruPlays / impressions)")
-        fig = go.Figure(go.Scatter(x=xs, y=pm["thru_rate"], mode="lines+markers", line=dict(color=TEAL, width=3), marker=mk2, name="View-through"))
+        fig = go.Figure(go.Scatter(x=xs, y=pm["thru_rate"], mode="lines+markers", line=dict(color=NAVY, width=3), marker=mk2, name="View-through"))
         show(month_axis(style_fig(fig, 300, legend_on=False, tickformat=".0%")), "tr4")
     st.markdown('<div class="note">Reach is the sum of campaign reach per month, so it overstates unique reach. Frequency here is monthly; the deck\'s alert level of 3 applies to weekly frequency. '
-                'Months before January 2026 use the 2025 exports. Amber markers are months whose Ads Manager export has less spend than the Ad Spend Report, so the export is probably incomplete (see the data check below). Cost per 1,000 reached suits reach campaigns; engagement boosts optimise for engagement, not reach.</div>', unsafe_allow_html=True)
+                'Months before January 2026 use the 2025 exports. Yellow markers are months whose Ads Manager export has less spend than the Ad Spend Report, so the export is probably incomplete (see the data check below). Cost per 1,000 reached suits reach campaigns; engagement boosts optimise for engagement, not reach.</div>', unsafe_allow_html=True)
     if len(pm) >= 2:
         last, prev = pm.iloc[-1], pm.iloc[-2]
         takeaway([("Key takeaway", f"In {xl[-1]}, reach was {num(last['reach'])} ({pct(change(last['reach'], prev['reach']), 1, True)} vs {xl[-2]}), cost per 1,000 reached {peso(last['cpr'], 2)} "
@@ -356,7 +362,7 @@ with tabs[2]:
         om = D.organic_monthly(POSTS)
         om = om[om.index < BUILT_MONTH] if M1 < BUILT_MONTH else om
         om = om[om.index <= M1].tail(12)
-        fig = go.Figure(go.Bar(x=[m.to_timestamp() for m in om.index], y=om["er"], marker_color=BLUE, text=[f"{v:.1%}" for v in om["er"]], textposition="outside", textfont=dict(color="#d7dde1")))
+        fig = go.Figure(go.Bar(x=[m.to_timestamp() for m in om.index], y=om["er"], marker_color=BLUE, text=[f"{v:.1%}" for v in om["er"]], textposition="outside", textfont=dict(color=TEXT)))
         fig.update_layout(bargap=0.4)
         show(month_axis(style_fig(fig, 280, legend_on=False, tickformat=".0%")), "ct1")
     sec("Top TikTok videos", "by views")

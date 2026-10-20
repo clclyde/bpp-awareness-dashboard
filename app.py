@@ -114,8 +114,10 @@ def change(c, p):
     return None if (c is None or p is None or pd.isna(c) or pd.isna(p) or p == 0) else c / p - 1
 
 
-def metric(label, value, chg, higher_better=True, series=None, help=None, vs=None):
-    """Native st.metric. Change vs the prior period; green or red by whether the move is good, grey when it is flat (under 2%)."""
+def metric(label, value, chg, higher_better=True, series=None, help=None, vs=None, baseline=False):
+    """Native st.metric. Change vs the prior period; green or red by whether the move is good, grey when it is flat (under 2%).
+    baseline=True is for the reference period of a comparison: a grey "Baseline" pill (no arrow, no number) takes the place of the change row,
+    so its trend line sits level with the compared period's."""
     if chg is None:
         delta, colour = None, "off"
     else:
@@ -124,6 +126,9 @@ def metric(label, value, chg, higher_better=True, series=None, help=None, vs=Non
     if higher_better is None:   # a change that is neither good nor bad (spend)
         colour = "off"
     kw = {"chart_data": [float(v) for v in series if not pd.isna(v)], "chart_type": "area"} if series is not None and len(series) > 1 else {}
+    if baseline:
+        st.metric(label, value, delta="Baseline", delta_color="off", delta_arrow="off", help=help, **kw)
+        return
     st.metric(label, value, delta=delta, delta_color=colour, delta_description=f"vs {vs or VS}" if chg is not None else None, help=help, **kw)
 
 
@@ -274,6 +279,12 @@ with tab_cmp:
     _tt_months = set(TT["month"].unique())                               # TikTok is only comparable when every month of both periods has videos in the SSOT
     TT_GAPS = [m for m in (A0 + i for i in range(2 * N)) if m not in _tt_months]
     TT_OK = not TT_GAPS
+    _cov = lambda m0, n_: [m for m in (m0 + i for i in range(n_)) if m in _tt_months]   # months of a period that have TikTok videos
+
+    def tt_partial(m0, n_):
+        """Label for a period whose TikTok total covers only some of its months (the rest are missing in the SSOT, not zero)."""
+        got = _cov(m0, n_)
+        return None if len(got) == n_ else (", ".join(mlabel(m) for m in got) + f" only ({len(got)} of {n_} months)" if got else "no months with data")
     fl, fr = st.columns(2, gap="large", border=True)
     with fl:
         st.markdown(f"**{A_NAME}** · {A_RNG}")
@@ -282,7 +293,11 @@ with tab_cmp:
         f1.metric("Engagement rate", pct(oa["er"], 2))
         f2.metric("Average reach per post", num(oa["reach_per_post"]))
         f2.metric("Post views", num(oa["views"]))
-        st.metric("TikTok video views", num(ta["views"]) if TT_OK else "n/a", help=None if TT_OK else "The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in TT_GAPS) + ".")
+        _pa = tt_partial(A0, N)
+        st.metric("TikTok video views" + (" (partial)" if _pa else ""), num(ta["views"]) if _cov(A0, N) else "n/a",
+                  help=None if not _pa else "The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in TT_GAPS if A0 <= m <= A1) + ", so this total is not the whole period.")
+        if _pa:
+            st.caption(_pa)
     with fr:
         st.markdown(f"**{B_NAME}** · {B_RNG}")
         f1, f2 = st.columns(2)
@@ -292,9 +307,12 @@ with tab_cmp:
         with f2:
             metric("Average reach per post", num(ob["reach_per_post"]), change(ob["reach_per_post"], oa["reach_per_post"]), True, vs=A_NAME.lower())
             metric("Post views", num(ob["views"]), change(ob["views"], oa["views"]), True, vs=A_NAME.lower())
-        metric("TikTok video views", num(tb["views"]) if tb["videos"] else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
+        _pb = tt_partial(B0, N)
+        metric("TikTok video views" + (" (partial)" if _pb else ""), num(tb["views"]) if _cov(B0, N) else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
+        if _pb:
+            st.caption(_pb)
     if not TT_OK:
-        st.caption(f"The SSOT has no TikTok videos for {', '.join(mlabel(m) for m in TT_GAPS)}, so TikTok views are not compared between the two periods.")
+        st.caption(f"The SSOT has no TikTok videos for {', '.join(mlabel(m) for m in TT_GAPS)}. The first period's TikTok total covers only the months that have data, so it is not compared with the second period (no change shown).")
 
     pm_all = D.paid_monthly(ADS)
     sa, sb = pm_all.loc[A0:A1], pm_all.loc[B0:B1]
@@ -312,7 +330,7 @@ with tab_cmp:
                                                  ("Average frequency", fa(ca), fa(cb), g("frequency"), False, "frequency", "Impressions / reach over the month.")):
         ml, mr = box.columns(2, gap="large")
         with ml:
-            metric(label, va, None, better, sa[kcol], hp)
+            metric(label, va, None, better, sa[kcol], hp, baseline=True)
         with mr:
             metric(label, vb, ch, better, sb[kcol], hp, vs=A_NAME.lower())
 

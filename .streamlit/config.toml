@@ -4,7 +4,22 @@ primaryColor = "#073763"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F3F6FA"
 textColor = "#3F3F3F"
-font = "sans serif"
+borderColor = "#DCE3EA"
+linkColor = "#0B3691"
+font = "Montserrat:https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap"
+headingFont = "Fraunces:https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&display=swap"
+headingFontSizes = ["2.6rem", "1.7rem", "1.2rem", "1rem", "0.9rem", "0.8rem"]
+headingFontWeights = [700, 700, 600, 600, 600, 600]
+metricValueFontSize = "2.2rem"
+metricValueFontWeight = 700
+baseRadius = "4px"
+buttonRadius = "4px"
+paddingTop = "1.5rem"
+paddingBottom = "3rem"
+chartCategoricalColors = ["#0B3691", "#073763", "#F1C232", "#D10000", "#93C47D", "#A6B8C6"]
+dataframeHeaderBackgroundColor = "#F3F6FA"
+dataframeHeaderTextColor = "#073763"
+dataframeBorderColor = "#DCE3EA"
 
 [server]
 headless = true

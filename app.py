@@ -1,7 +1,7 @@
 """BPP Brand Awareness Review (Streamlit prototype), editorial layout.
 
 The page opens with the finding as a sentence, then the figures, then the evidence. Colours are the Project Swarm deck palette (navy, title blue,
-yellow, red on white); fonts, colours and metric sizes live in .streamlit/config.toml. The only custom HTML is the caution stripe.
+yellow, red on white); fonts, colours and metric sizes live in .streamlit/config.toml. The only custom HTML is the yellow rule at the top and the red bar at the bottom.
 KPI definitions follow the Marketing 3.0 KPI deck (Paid awareness module): reach, frequency, cost per 1,000 reached, video view-through,
 engagement rate = engagements / reach. Awareness is reported as delivery and cost: reach measures exposure, not recall.
 
@@ -100,8 +100,8 @@ def metric(label, value, chg, higher_better=True, series=None, help=None):
 
 
 def stripe():
-    """The one custom element: caution tape. BPP is Budol-Proof Pinoy, an awareness page about not getting scammed."""
-    st.html(f'<div style="height:8px;background:repeating-linear-gradient(-45deg,{YELLOW} 0 14px,{NAVY} 14px 28px)"></div>')
+    """A plain yellow rule across the top of the page."""
+    st.html(f'<div style="height:8px;background:{YELLOW}"></div>')
 
 
 def style_fig(fig, height=300, tickprefix="", tickformat=None):

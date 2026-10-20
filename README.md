@@ -9,7 +9,7 @@ The Marketing 3.0 KPI deck (Example Reports): the dark Razza style, the **Module
 3. **Content**: top Facebook posts by reach, performance by post type, engagement rate by month, top TikTok videos.
 
 ## Look and feel
-Editorial layout (2026-10-20): headline sentence first, then figures with sparklines, then charts and tables; native Streamlit theming in `.streamlit/config.toml` (Streamlit 1.66). Headings use Fraunces (serif), body and figures Montserrat. A yellow/navy caution stripe tops the page (BPP = Budol-Proof Pinoy). The tabs are Overview, Awareness trend and Content.
+Editorial layout (2026-10-20): headline sentence first, then figures with sparklines, then charts and tables; native Streamlit theming in `.streamlit/config.toml` (Streamlit 1.66). Headings use Fraunces (serif), body and figures Montserrat. A plain yellow rule tops the page and a red bar closes it. The tabs are Overview, Awareness trend and Content.
 
 Colour scheme and font follow the Project Swarm 2026 Year-to-Date Report deck (values read from the deck file, not estimated): white background, navy `#073763` (headings, cards, table headers, top bar), title blue `#0B3691` (chart lines), yellow `#F1C232` (title highlight, section marks, incomplete-month markers), red `#D10000` (bottom bar, negative changes), text `#3F3F3F`, status green `#93C47D`. Font: **Montserrat** (the deck's main font), loaded from Google Fonts, with Open Sans as fallback. The PediaWell dashboard keeps its own dark design.
 

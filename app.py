@@ -7,7 +7,9 @@ engagement rate = engagements / reach. Awareness is reported as delivery and cos
 
 Run:  cd bpp_dashboard && ../.venv/bin/streamlit run app.py     (reads Supabase via .streamlit/secrets.toml, or the local snapshot data/bpp_snapshot.json)
 """
+import hmac
 import os
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -34,6 +36,32 @@ if _conf is None and os.environ.get("PULSE_DB_HOST"):  # self-hosted: the same s
     _env = {k: os.environ.get(v) for k, v in (("host", "PULSE_DB_HOST"), ("user", "PULSE_DB_USER"), ("password", "PULSE_DB_PASSWORD"))}
     if all(_env.values()):
         _conf = {**_env, "port": os.environ.get("PULSE_DB_PORT", "5432"), "dbname": os.environ.get("PULSE_DB_NAME", "postgres"), "sslmode": os.environ.get("PULSE_DB_SSLMODE", "require")}
+
+
+# ---------- access password (optional) ----------
+# One shared password for the people allowed in, while the app itself stays public. Set `app_password` in the app's Secrets (above the [supabase] block,
+# or inside it) or the APP_PASSWORD environment variable. Without it the app opens as before. It is a shared secret with no lockout, not an account system.
+_pw = None
+if any(f.exists() for f in _secret_files):
+    try:
+        _pw = st.secrets.get("app_password") or (_conf or {}).get("app_password")
+    except Exception:
+        _pw = None
+_pw = _pw or os.environ.get("APP_PASSWORD")
+if _pw and not st.session_state.get("authed"):
+    st.html(f'<div style="height:8px;background:{YELLOW}"></div>')
+    st.title("BPP Brand Awareness Review")
+    st.markdown("This dashboard is for invited viewers. Enter the access password you were given.")
+    with st.form("login"):
+        entered = st.text_input("Access password", type="password")
+        go = st.form_submit_button("Open dashboard")
+    if go:
+        if hmac.compare_digest(entered.encode(), str(_pw).encode()):
+            st.session_state["authed"] = True
+            st.rerun()
+        time.sleep(1)   # slows down guessing a little
+        st.error("That password is not right.")
+    st.stop()
 
 
 @st.cache_data(ttl=300, show_spinner="Loading BPP data...")

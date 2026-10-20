@@ -21,13 +21,13 @@ cd bpp_dashboard
 The app reads Supabase when it finds `[supabase]` settings (`.streamlit/secrets.toml`, or `PULSE_DB_*` environment variables), using the read-only `pulse_reader_bpp` login. Without settings it falls back to a local, git-ignored `data/bpp_snapshot.json` if present, otherwise it shows an error box. Hosting: see `DEPLOY.md`.
 
 ## Data
-`data/bpp_snapshot.json` was built on 2026-10-19 from the BPP Content SSOT (Google Sheet):
-- **ads**: the monthly Ads Manager export tabs (`AUG - AM` ... `OCT Ads`), Aug 2025 to 17 Oct 2026, one row per campaign (March 2026 is exported per ad).
-- **posts**: the monthly Facebook post tabs (`AUG - Meta` ... `OCT FB`), one row per post.
-- **tiktok**: the `YTD TikTok` tab, one row per video.
-- **ad_spend_report**: BPP-FB monthly spend from the Ad Spend Report 2026, used only for the data check.
+The data comes from the BPP Content SSOT (Google Sheet) and lives in Supabase (`social_ads_monthly`, `fb_posts`, `tiktok_videos`, read with the BPP-only login). A local, git-ignored `data/bpp_snapshot.json` is the fallback and the file the seed is generated from:
+- **ads**: the monthly Ads Manager export tabs (`AUG - AM` ... `OCT Ads`), one row per campaign (March 2026 is exported per ad).
+- **posts**: the monthly Facebook post tabs plus the `YTD Meta` tab (a few posts were missing from the monthly tabs and were added from it).
+- **tiktok**: `YTD TikTok` (2026) plus the `AUG - TT` and `SEPT - TT` tabs (2025). The SSOT has no TikTok videos for Oct to Dec 2025, so those months are treated as missing data, not zero.
+- **ad_spend_report**: BPP-FB monthly spend from the Ad Spend Report 2026, used only for the internal data check.
 
-Cross-check: Ads Manager spend equals the Ad Spend Report's BPP-FB line to the cent for Jan, Mar, Jun, Jul and Aug 2026. Feb, Apr and May differ (the export tabs look incomplete); those months are marked amber on the trend charts. September and October are not in the Ad Spend Report yet.
+Known gaps: the February, April and May 2026 Ads Manager tabs look incomplete (spend below the Ad Spend Report), so those months are understated; they are marked in the internal view. Not integrated yet: TikTok ad spend, follower counts, post sentiment, budget pacing. The refresh is manual (read the sheet, rebuild the snapshot, generate and run the seed); an n8n loader is not built.
 
 ## Definitions and differences from the deck
 Follows the deck's Paid awareness definitions, with these differences, all stated on the pages:

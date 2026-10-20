@@ -252,18 +252,53 @@ with tab_cmp:
     spm_a, spm_b = ca["spend"] / N, cb["spend"] / N                      # spend per month
     g = lambda k, a=ca, b=cb: change(b[k], a[k])
     rc, cc, sc = g("reach_avg"), g("cpr"), change(spm_b, spm_a)
+    rp, pv, er = change(ob["reach_per_post"], oa["reach_per_post"]), change(ob["views"], oa["views"]), change(ob["er"], oa["er"])
+    mv = lambda c: f"{'grew' if c >= 0 else 'fell'} {abs(c):.0%}"
+    intro = []
+    if None not in (rp, pv, er):
+        intro.append(f"On the Facebook page, reach per post {mv(rp)} ({num(oa['reach_per_post'])} to {num(ob['reach_per_post'])}) and post views {mv(pv)}"
+                     f"{', while' if (er < 0) != (min(rp, pv) < 0) else ', and'} the engagement rate {mv(er)} ({pct(oa['er'], 2)} to {pct(ob['er'], 2)}).")
     if rc is not None and cc is not None:
-        st.markdown(f"Monthly paid reach {'grew' if rc >= 0 else 'fell'} **{abs(rc):.1%}**, from {short(ca['reach_avg'])} in the {A_NAME.lower()} ({A_RNG}) to {short(cb['reach_avg'])} in the {B_NAME.lower()} ({B_RNG}). "
-                    f"Cost per 1,000 reached went {'down' if cc <= 0 else 'up'} **{abs(cc):.1%}**, from {peso(ca['cpr'], 2)} to {peso(cb['cpr'], 2)}"
-                    + (f", and monthly ad spend {'dropped' if sc < 0 else 'rose'} {abs(sc):.1%} ({peso(spm_a)} to {peso(spm_b)})." if sc is not None else "."))
+        intro.append(f"Paid reach per month {'grew' if rc >= 0 else 'fell'} **{abs(rc):.1%}**, from {short(ca['reach_avg'])} to {short(cb['reach_avg'])}. "
+                     f"Cost per 1,000 reached went {'down' if cc <= 0 else 'up'} **{abs(cc):.1%}**, from {peso(ca['cpr'], 2)} to {peso(cb['cpr'], 2)}"
+                     + (f", and monthly ad spend {'dropped' if sc < 0 else 'rose'} {abs(sc):.1%} ({peso(spm_a)} to {peso(spm_b)})." if sc is not None else "."))
+    if intro:
+        st.markdown(" ".join(intro))
     if INTERNAL:
         bad = [m for m in GAPS if A0 <= m <= B1]
         if bad:
             st.warning("Some Ads Manager exports in these periods look incomplete (spend below the Ad Spend Report): " + ", ".join(mlabel(m) for m in sorted(bad))
                        + ". Spend and reach for those months are understated, so check before showing a cost comparison to the client.", icon=":material/warning:")
 
+    st.subheader("Facebook page and TikTok")
+    _tt_months = set(TT["month"].unique())                               # TikTok is only comparable when every month of both periods has videos in the SSOT
+    TT_GAPS = [m for m in (A0 + i for i in range(2 * N)) if m not in _tt_months]
+    TT_OK = not TT_GAPS
+    fl, fr = st.columns(2, gap="large", border=True)
+    with fl:
+        st.markdown(f"**{A_NAME}** · {A_RNG}")
+        f1, f2 = st.columns(2)
+        f1.metric("Posts published", num(oa["posts"]))
+        f1.metric("Engagement rate", pct(oa["er"], 2))
+        f2.metric("Average reach per post", num(oa["reach_per_post"]))
+        f2.metric("Post views", num(oa["views"]))
+        st.metric("TikTok video views", num(ta["views"]) if TT_OK else "n/a", help=None if TT_OK else "The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in TT_GAPS) + ".")
+    with fr:
+        st.markdown(f"**{B_NAME}** · {B_RNG}")
+        f1, f2 = st.columns(2)
+        with f1:
+            metric("Posts published", num(ob["posts"]), change(ob["posts"], oa["posts"]), True, vs=A_NAME.lower())
+            metric("Engagement rate", pct(ob["er"], 2), change(ob["er"], oa["er"]), True, vs=A_NAME.lower())
+        with f2:
+            metric("Average reach per post", num(ob["reach_per_post"]), change(ob["reach_per_post"], oa["reach_per_post"]), True, vs=A_NAME.lower())
+            metric("Post views", num(ob["views"]), change(ob["views"], oa["views"]), True, vs=A_NAME.lower())
+        metric("TikTok video views", num(tb["views"]) if tb["videos"] else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
+    if not TT_OK:
+        st.caption(f"The SSOT has no TikTok videos for {', '.join(mlabel(m) for m in TT_GAPS)}, so TikTok views are not compared between the two periods.")
+
     pm_all = D.paid_monthly(ADS)
     sa, sb = pm_all.loc[A0:A1], pm_all.loc[B0:B1]
+    st.subheader("Paid awareness on Facebook")
     box = st.container(border=True)                                      # one row per metric so each pair sits level
     hl, hr = box.columns(2, gap="large")
     hl.subheader(A_NAME)
@@ -301,30 +336,6 @@ with tab_cmp:
     with b_:
         split_trend("Cost per 1,000 reached by month", "cpr", (ca["cpr"], cb["cpr"]), lambda v: peso(v, 2), "₱%{y:,.2f}", ",.0f", tickprefix="₱", key="cmp2")
     st.caption(f"Dashed lines are the average of each period (for cost per 1,000: total spend / total reach) ({A_NAME.lower()} in grey, {B_NAME.lower()} in blue). Reach adds up campaign reach, so the number of different people is lower.")
-
-    st.subheader("Facebook page and TikTok")
-    TT_OK = TT["month"].min() <= A0                                      # TikTok is only comparable when the first period is fully covered
-    fl, fr = st.columns(2, gap="large", border=True)
-    with fl:
-        st.markdown(f"**{A_NAME}** · {A_RNG}")
-        f1, f2 = st.columns(2)
-        f1.metric("Posts published", num(oa["posts"]))
-        f1.metric("Engagement rate", pct(oa["er"], 2))
-        f2.metric("Average reach per post", num(oa["reach_per_post"]))
-        f2.metric("Post views", num(oa["views"]))
-        st.metric("TikTok video views", num(ta["views"]) if TT_OK else "n/a", help=None if TT_OK else "The TikTok data in the SSOT starts after the start of this period.")
-    with fr:
-        st.markdown(f"**{B_NAME}** · {B_RNG}")
-        f1, f2 = st.columns(2)
-        with f1:
-            metric("Posts published", num(ob["posts"]), change(ob["posts"], oa["posts"]), True, vs=A_NAME.lower())
-            metric("Engagement rate", pct(ob["er"], 2), change(ob["er"], oa["er"]), True, vs=A_NAME.lower())
-        with f2:
-            metric("Average reach per post", num(ob["reach_per_post"]), change(ob["reach_per_post"], oa["reach_per_post"]), True, vs=A_NAME.lower())
-            metric("Post views", num(ob["views"]), change(ob["views"], oa["views"]), True, vs=A_NAME.lower())
-        metric("TikTok video views", num(tb["views"]) if tb["videos"] else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
-    if not TT_OK:
-        st.caption(f"TikTok data in the SSOT starts {mlabel(TT['month'].min())}, so it is not compared with the {A_NAME.lower()}.")
 
     def _row(label, a, b, chg_, fmt):
         return {"Metric": label, A_NAME + " (" + A_RNG + ")": fmt(a), B_NAME + " (" + B_RNG + ")": fmt(b), "Change": pct(chg_, 1, True) if chg_ is not None else "n/a"}
@@ -394,6 +405,11 @@ with tabs[0]:
         with t2:
             metric("Video views", num(tk["views"]), chg(tk, tk_p, "views"), True, help=f"{num(tk['views_per_video'])} per video.")
             metric("Engagements", num(tk["engagements"]), chg(tk, tk_p, "engagements"), True, help="Likes, comments, shares.")
+        _tt_all = set(TT["month"].unique())
+        _gap = [m for m in sorted({*(M0 + i for i in range((M1 - M0).n + 1)), *((P0 + i for i in range((P1 - P0).n + 1)) if HAS_PRIOR else ())})
+                if TT["month"].min() <= m <= TT["month"].max() and m not in _tt_all]
+        if _gap:   # a month with no video rows in the SSOT is missing data, not a month without posts
+            st.caption("The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in _gap) + ", so zeros and changes here reflect missing data.")
 
     camps = D.campaigns(ADS, M0, M1)
     camps = camps[(camps["reach"] > 0) & (camps["objective"] == "reach")]   # cost per 1,000 reached only compares reach campaigns

@@ -239,7 +239,7 @@ tab_cmp, *tabs = st.tabs(["First vs second half", "Overview", "Awareness trend",
 # ===== First vs second half (default view) =====
 with tab_cmp:
     LASTM = [m for m in MONTHS if m <= LAST]
-    st.title("Did the second half grow, and cost less?")
+    st.title("Brand awareness: first half vs second half")
     sel1, sel2, sel3 = st.columns([1, 1, 2], vertical_alignment="bottom")
     N = sel1.selectbox("Months per period", [3, 4, 6], index=2, key="cmp_n", help="The first period is followed straight away by a second period of the same length.")
     STARTS = [m for i, m in enumerate(LASTM) if i + 2 * N <= len(LASTM)]
@@ -311,7 +311,7 @@ with tab_cmp:
         metric("TikTok video views" + (" (partial)" if _pb else ""), num(tb["views"]) if _cov(B0, N) else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
         if _pb:
             st.caption(_pb)
-    if not TT_OK:
+    if INTERNAL and not TT_OK:   # internal view only: the client sees the "(partial)" label and the months it covers
         st.caption(f"The SSOT has no TikTok videos for {', '.join(mlabel(m) for m in TT_GAPS)}. The first period's TikTok total covers only the months that have data, so it is not compared with the second period (no change shown).")
 
     pm_all = D.paid_monthly(ADS)
@@ -426,7 +426,7 @@ with tabs[0]:
         _tt_all = set(TT["month"].unique())
         _gap = [m for m in sorted({*(M0 + i for i in range((M1 - M0).n + 1)), *((P0 + i for i in range((P1 - P0).n + 1)) if HAS_PRIOR else ())})
                 if TT["month"].min() <= m <= TT["month"].max() and m not in _tt_all]
-        if _gap:   # a month with no video rows in the SSOT is missing data, not a month without posts
+        if INTERNAL and _gap:   # a month with no video rows in the SSOT is missing data, not a month without posts (internal view only)
             st.caption("The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in _gap) + ", so zeros and changes here reflect missing data.")
 
     camps = D.campaigns(ADS, M0, M1)

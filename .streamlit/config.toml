@@ -7,7 +7,7 @@ textColor = "#3F3F3F"
 borderColor = "#DCE3EA"
 linkColor = "#0B3691"
 font = "Montserrat:https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap"
-headingFont = "Fraunces:https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&display=swap"
+headingFont = "'Source Serif 4':https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&display=swap"
 headingFontSizes = ["2.6rem", "1.7rem", "1.2rem", "1rem", "0.9rem", "0.8rem"]
 headingFontWeights = [700, 700, 600, 600, 600, 600]
 metricValueFontSize = "2.2rem"

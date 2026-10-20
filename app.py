@@ -184,7 +184,7 @@ def _on_preset():
 st.session_state.setdefault("m0", LAST)
 st.session_state.setdefault("m1", LAST)
 with st.sidebar:
-    st.subheader("Reporting months")
+    st.subheader("Reporting Months")
     st.selectbox("Quick range", list(_presets()), key="preset", on_change=_on_preset)
     st.selectbox("From month", MONTHS, key="m0", format_func=mlabel)
     st.selectbox("To month", MONTHS, key="m1", format_func=mlabel)
@@ -234,12 +234,12 @@ right.caption(f"Data as of {S['built_at']:%d %b %Y}", text_alignment="right")
 if M1 >= BUILT_MONTH:
     st.warning(f"{mlabel(M1)} was still running when the data was loaded ({S['built_at']:%d %b}): its numbers are partial.", icon=":material/schedule:")
 
-tab_cmp, *tabs = st.tabs(["First vs second half", "Overview", "Awareness trend", "Content"])
+tab_cmp, *tabs = st.tabs(["First vs Second Half", "Overview", "Awareness Trend", "Content"])
 
 # ===== First vs second half (default view) =====
 with tab_cmp:
     LASTM = [m for m in MONTHS if m <= LAST]
-    st.title("Brand awareness: first half vs second half")
+    st.title("Brand Awareness: First Half vs Second Half")
     sel1, sel2, sel3 = st.columns([1, 1, 2], vertical_alignment="bottom")
     N = sel1.selectbox("Months per period", [3, 4, 6], index=2, key="cmp_n", help="The first period is followed straight away by a second period of the same length.")
     STARTS = [m for i, m in enumerate(LASTM) if i + 2 * N <= len(LASTM)]
@@ -248,6 +248,7 @@ with tab_cmp:
     A0 = sel2.selectbox("First period starts", STARTS, key="cmp_start", format_func=mlabel)
     A1, B0, B1 = A0 + (N - 1), A0 + N, A0 + (2 * N - 1)
     A_NAME, B_NAME = f"First {N} months", f"Next {N} months"
+    A_TITLE, B_TITLE = f"First {N} Months", f"Next {N} Months"       # headings in Title Case, running text uses the lowercase names
     A_RNG, B_RNG = f"{mlabel(A0)} to {mlabel(A1)}", f"{mlabel(B0)} to {mlabel(B1)}"
     sel3.caption("This view has its own period selector. The sidebar months drive the other tabs.")
 
@@ -275,7 +276,7 @@ with tab_cmp:
             st.warning("Some Ads Manager exports in these periods look incomplete (spend below the Ad Spend Report): " + ", ".join(mlabel(m) for m in sorted(bad))
                        + ". Spend and reach for those months are understated, so check before showing a cost comparison to the client.", icon=":material/warning:")
 
-    st.subheader("Facebook page and TikTok")
+    st.subheader("Facebook Page and TikTok")
     _tt_months = set(TT["month"].unique())                               # TikTok is only comparable when every month of both periods has videos in the SSOT
     TT_GAPS = [m for m in (A0 + i for i in range(2 * N)) if m not in _tt_months]
     TT_OK = not TT_GAPS
@@ -287,7 +288,7 @@ with tab_cmp:
         return None if len(got) == n_ else (", ".join(mlabel(m) for m in got) + f" only ({len(got)} of {n_} months)" if got else "no months with data")
     fl, fr = st.columns(2, gap="large", border=True)
     with fl:
-        st.markdown(f"**{A_NAME}** · {A_RNG}")
+        st.markdown(f"**{A_TITLE}** · {A_RNG}")
         f1, f2 = st.columns(2)
         f1.metric("Posts published", num(oa["posts"]))
         f1.metric("Engagement rate", pct(oa["er"], 2))
@@ -299,7 +300,7 @@ with tab_cmp:
         if _pa:
             st.caption(_pa)
     with fr:
-        st.markdown(f"**{B_NAME}** · {B_RNG}")
+        st.markdown(f"**{B_TITLE}** · {B_RNG}")
         f1, f2 = st.columns(2)
         with f1:
             metric("Posts published", num(ob["posts"]), change(ob["posts"], oa["posts"]), True, vs=A_NAME.lower())
@@ -316,12 +317,12 @@ with tab_cmp:
 
     pm_all = D.paid_monthly(ADS)
     sa, sb = pm_all.loc[A0:A1], pm_all.loc[B0:B1]
-    st.subheader("Paid awareness on Facebook")
+    st.subheader("Paid Awareness on Facebook")
     box = st.container(border=True)                                      # one row per metric so each pair sits level
     hl, hr = box.columns(2, gap="large")
-    hl.subheader(A_NAME)
+    hl.subheader(A_TITLE)
     hl.caption(A_RNG)
-    hr.subheader(B_NAME)
+    hr.subheader(B_TITLE)
     hr.caption(B_RNG)
     fa = lambda c: f"{c['frequency']:.2f}" if not pd.isna(c["frequency"]) else "n/a"
     for label, va, vb, ch, better, kcol, hp in (("Reach (monthly average)", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, True, "reach", None),
@@ -373,7 +374,7 @@ with tab_cmp:
 with tabs[0]:
     reach_now = cur["reach"] if cur["months"] == 1 else cur["reach_avg"]
     if pd.isna(reach_now) or pd.isna(cur["cpr"]):
-        st.title(f"Brand awareness, {RANGE}")
+        st.title(f"Brand Awareness, {RANGE}")
     else:
         lead = f"Paid reach hit {short(reach_now)} in {RANGE}" if cur["months"] == 1 else f"Paid reach averaged {short(reach_now)} a month, {RANGE}"
         st.title(f"{lead}, at {peso(cur['cpr'], 2)} per 1,000 reached.")
@@ -388,7 +389,7 @@ with tabs[0]:
     parts.append("Reach adds up campaign reach, so the number of different people is lower.")
     st.markdown(" ".join(parts))
 
-    st.subheader("Paid awareness on Facebook")
+    st.subheader("Paid Awareness on Facebook")
     c1, c2, c3 = st.columns(3)
     with c1:
         metric("Reach (monthly)", num(reach_now), chg(cur, pre, "reach_avg"), True, pm["reach"], "Sum of campaign reach per month. Multi-month ranges show the monthly average. Share of target audience: pending.")
@@ -406,7 +407,7 @@ with tabs[0]:
 
     left_col, right_col = st.columns(2, gap="large", border=True)   # a frame per group so Facebook page and TikTok read as separate things
     with left_col:
-        st.subheader("Facebook page")
+        st.subheader("Facebook Page")
         o1, o2 = st.columns(2)
         with o1:
             metric("Posts published", num(org["posts"]), chg(org, org_p, "posts"), True)
@@ -431,7 +432,7 @@ with tabs[0]:
 
     camps = D.campaigns(ADS, M0, M1)
     camps = camps[(camps["reach"] > 0) & (camps["objective"] == "reach")]   # cost per 1,000 reached only compares reach campaigns
-    st.subheader("What to look at next")
+    st.subheader("What to Look at Next")
     if len(camps) >= 2:
         lo, hi = camps.loc[camps["cpr"].idxmin()], camps.loc[camps["cpr"].idxmax()]
         st.markdown(f"Among reach campaigns, **{lo['name'][:60]}** was cheapest at {peso(lo['cpr'], 2)} per 1,000 reached and **{hi['name'][:60]}** the costliest at {peso(hi['cpr'], 2)}. "
@@ -442,7 +443,7 @@ with tabs[0]:
 
 # ===== Awareness trend =====
 with tabs[1]:
-    st.title("How awareness moved, month by month")
+    st.title("How Awareness Moved, Month by Month")
     st.markdown(f"Paid awareness on Facebook up to {mlabel(M1)}. Weekly reach and target audiences are not in the SSOT yet, so the unit is the month.")
     xs = [m.to_timestamp() for m in pm.index]
     flags = [INTERNAL and m in GAPS for m in pm.index]
@@ -461,7 +462,7 @@ with tabs[1]:
         note = "Yellow markers are months whose Ads Manager export has less spend than the Ad Spend Report, so the export is probably incomplete (see the data check below). " + note
     st.caption(note)
 
-    st.subheader("Paid campaigns", anchor=False)
+    st.subheader("Paid Campaigns", anchor=False)
     st.caption(f"{RANGE}, largest spend first")
     camp = D.campaigns(ADS, M0, M1).head(10)
     cdf = pd.DataFrame({"Campaign": camp["name"].str[:78], "Type": camp["objective"], "Spend (₱)": camp["spend"], "Reach": camp["reach"],
@@ -483,7 +484,7 @@ with tabs[1]:
 
 # ===== Content =====
 with tabs[2]:
-    st.title("What people saw and engaged with")
+    st.title("What People Saw and Engaged With")
     st.markdown(f"Facebook page posts and TikTok videos published in {RANGE}.")
     tp = D.top_posts(POSTS, M0, M1, 10)
     bt = D.by_post_type(POSTS, M0, M1)
@@ -494,7 +495,7 @@ with tabs[2]:
             second = (f"**{best}** had both the highest engagement rate ({pct(bt.loc[best, 'er'], 2)}) and the highest reach per post ({num(bt['reach_per_post'].max())})." if best == top_reach
                       else f"**{best}** had the highest engagement rate ({pct(bt.loc[best, 'er'], 2)}) and **{top_reach}** the highest reach per post ({num(bt['reach_per_post'].max())}).")
             st.markdown(f"The top post by reach was a **{tp.iloc[0]['type'].lower().rstrip('s')}** with {num(tp.iloc[0]['reach'])} reach. {second}")
-    st.subheader("Top Facebook posts")
+    st.subheader("Top Facebook Posts")
     st.caption("By reach")
     if len(tp):
         pdf = pd.DataFrame({"Post": tp["title"].map(lambda t: " ".join(str(t).split())[:90]), "Type": tp["type"], "Date": tp["published"].dt.strftime("%d %b"),
@@ -510,7 +511,7 @@ with tabs[2]:
         st.info("No Facebook posts in this range.")
     l, r = st.columns([1.1, 1], gap="large")
     with l:
-        st.subheader("By post type")
+        st.subheader("By Post Type")
         st.dataframe(pd.DataFrame({"Type": bt.index, "Posts": bt["posts"].values, "Reach per post": bt["reach_per_post"].round(0).values, "Views": bt["views"].values,
                                    "Engagement rate": bt["er"].values}), hide_index=True, width="stretch", column_config={
             "Reach per post": st.column_config.NumberColumn(format="localized"), "Views": st.column_config.NumberColumn(format="localized"),
@@ -520,7 +521,7 @@ with tabs[2]:
         om = om[om.index < BUILT_MONTH] if M1 < BUILT_MONTH else om
         om = om[om.index <= M1].tail(12)
         trend("Facebook engagement rate by month", [m.to_timestamp() for m in om.index], om["er"], [False] * len(om), lambda v: pct(v, 1), "%{y:.1%}", ".0%", key="ct1")
-    st.subheader("Top TikTok videos")
+    st.subheader("Top TikTok Videos")
     st.caption("By views")
     tv = D.top_tiktok(TT, M0, M1, 8)
     if len(tv):

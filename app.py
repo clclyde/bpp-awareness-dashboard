@@ -274,8 +274,7 @@ with tab_cmp:
     for label, va, vb, ch, better, kcol, hp in (("Reach (monthly average)", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, True, "reach", None),
                                                  ("Cost per 1,000 reached", peso(ca["cpr"], 2), peso(cb["cpr"], 2), cc, False, "cpr", "Ad spend / reach x 1,000. Lower is better."),
                                                  ("Ad spend (per month)", peso(spm_a), peso(spm_b), sc, None, "spend", "Ads Manager, ex-VAT."),
-                                                 ("Average frequency", fa(ca), fa(cb), g("frequency"), False, "frequency", "Impressions / reach over the month."),
-                                                 ("Video view-through", pct(ca["thru_rate"], 1), pct(cb["thru_rate"], 1), g("thru_rate"), True, "thru_rate", "ThruPlays / impressions.")):
+                                                 ("Average frequency", fa(ca), fa(cb), g("frequency"), False, "frequency", "Impressions / reach over the month.")):
         ml, mr = box.columns(2, gap="large")
         with ml:
             metric(label, va, None, better, sa[kcol], hp)
@@ -325,7 +324,7 @@ with tab_cmp:
             metric("Post views", num(ob["views"]), change(ob["views"], oa["views"]), True, vs=A_NAME.lower())
         metric("TikTok video views", num(tb["views"]) if tb["videos"] else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
     if not TT_OK:
-        st.caption(f"TikTok data in the SSOT starts {mlabel(TT['month'].min())}, so it is not compared with the {A_NAME.lower()}. Video view-through is n/a for months whose export has no ThruPlay column.")
+        st.caption(f"TikTok data in the SSOT starts {mlabel(TT['month'].min())}, so it is not compared with the {A_NAME.lower()}.")
 
     def _row(label, a, b, chg_, fmt):
         return {"Metric": label, A_NAME + " (" + A_RNG + ")": fmt(a), B_NAME + " (" + B_RNG + ")": fmt(b), "Change": pct(chg_, 1, True) if chg_ is not None else "n/a"}
@@ -334,7 +333,6 @@ with tab_cmp:
             _row("Ad spend (total)", ca["spend"], cb["spend"], change(cb["spend"], ca["spend"]), peso),
             _row("Ad spend (per month)", spm_a, spm_b, sc, peso),
             _row("Average frequency", ca["frequency"], cb["frequency"], g("frequency"), lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"),
-            _row("Video view-through", ca["thru_rate"], cb["thru_rate"], g("thru_rate"), lambda v: pct(v, 1)),
             _row("Facebook posts published", oa["posts"], ob["posts"], change(ob["posts"], oa["posts"]), num),
             _row("Facebook engagement rate", oa["er"], ob["er"], change(ob["er"], oa["er"]), lambda v: pct(v, 2)),
             _row("Facebook reach per post", oa["reach_per_post"], ob["reach_per_post"], change(ob["reach_per_post"], oa["reach_per_post"]), num)]

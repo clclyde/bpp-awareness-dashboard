@@ -297,8 +297,8 @@ with tab_cmp:
         _pa = tt_partial(A0, N)
         st.metric("TikTok video views" + (" (partial)" if _pa else ""), num(ta["views"]) if _cov(A0, N) else "n/a",
                   help=None if not _pa else "The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in TT_GAPS if A0 <= m <= A1) + ", so this total is not the whole period.")
-        if _pa:
-            st.caption(_pa)
+        if _pa:   # says outright that it is the TikTok views figure, not the whole box
+            st.caption("TikTok video views: no data for this period." if _pa == "no months with data" else f"TikTok video views cover {_pa}.")
     with fr:
         st.markdown(f"**{B_TITLE}** · {B_RNG}")
         f1, f2 = st.columns(2)
@@ -310,8 +310,8 @@ with tab_cmp:
             metric("Post views", num(ob["views"]), change(ob["views"], oa["views"]), True, vs=A_NAME.lower())
         _pb = tt_partial(B0, N)
         metric("TikTok video views" + (" (partial)" if _pb else ""), num(tb["views"]) if _cov(B0, N) else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
-        if _pb:
-            st.caption(_pb)
+        if _pb:   # says outright that it is the TikTok views figure, not the whole box
+            st.caption("TikTok video views: no data for this period." if _pb == "no months with data" else f"TikTok video views cover {_pb}.")
     if INTERNAL and not TT_OK:   # internal view only: the client sees the "(partial)" label and the months it covers
         st.caption(f"The SSOT has no TikTok videos for {', '.join(mlabel(m) for m in TT_GAPS)}. The first period's TikTok total covers only the months that have data, so it is not compared with the second period (no change shown).")
 

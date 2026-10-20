@@ -114,7 +114,7 @@ def change(c, p):
     return None if (c is None or p is None or pd.isna(c) or pd.isna(p) or p == 0) else c / p - 1
 
 
-def metric(label, value, chg, higher_better=True, series=None, help=None):
+def metric(label, value, chg, higher_better=True, series=None, help=None, vs=None):
     """Native st.metric. Change vs the prior period; green or red by whether the move is good, grey when it is flat (under 2%)."""
     if chg is None:
         delta, colour = None, "off"
@@ -124,7 +124,7 @@ def metric(label, value, chg, higher_better=True, series=None, help=None):
     if higher_better is None:   # a change that is neither good nor bad (spend)
         colour = "off"
     kw = {"chart_data": [float(v) for v in series if not pd.isna(v)], "chart_type": "area"} if series is not None and len(series) > 1 else {}
-    st.metric(label, value, delta=delta, delta_color=colour, delta_description=f"vs {VS}" if chg is not None else None, help=help, **kw)
+    st.metric(label, value, delta=delta, delta_color=colour, delta_description=f"vs {vs or VS}" if chg is not None else None, help=help, **kw)
 
 
 def stripe():
@@ -229,7 +229,118 @@ right.caption(f"Data as of {S['built_at']:%d %b %Y}", text_alignment="right")
 if M1 >= BUILT_MONTH:
     st.warning(f"{mlabel(M1)} was still running when the data was loaded ({S['built_at']:%d %b}): its numbers are partial.", icon=":material/schedule:")
 
-tabs = st.tabs(["Overview", "Awareness trend", "Content"])
+tab_cmp, *tabs = st.tabs(["First vs second half", "Overview", "Awareness trend", "Content"])
+
+# ===== First vs second half (default view) =====
+with tab_cmp:
+    LASTM = [m for m in MONTHS if m <= LAST]
+    st.title("Did the second half grow, and cost less?")
+    sel1, sel2, sel3 = st.columns([1, 1, 2], vertical_alignment="bottom")
+    N = sel1.selectbox("Months per period", [3, 4, 6], index=2, key="cmp_n", help="The first period is followed straight away by a second period of the same length.")
+    STARTS = [m for i, m in enumerate(LASTM) if i + 2 * N <= len(LASTM)]
+    if st.session_state.get("cmp_start") not in STARTS:
+        st.session_state["cmp_start"] = STARTS[0]
+    A0 = sel2.selectbox("First period starts", STARTS, key="cmp_start", format_func=mlabel)
+    A1, B0, B1 = A0 + (N - 1), A0 + N, A0 + (2 * N - 1)
+    A_NAME, B_NAME = f"First {N} months", f"Next {N} months"
+    A_RNG, B_RNG = f"{mlabel(A0)} to {mlabel(A1)}", f"{mlabel(B0)} to {mlabel(B1)}"
+    sel3.caption("This view has its own period selector. The sidebar months drive the other tabs.")
+
+    ca, cb = D.paid(ADS, A0, A1), D.paid(ADS, B0, B1)
+    oa, ob = D.organic(POSTS, A0, A1), D.organic(POSTS, B0, B1)
+    ta, tb = D.tiktok(TT, A0, A1), D.tiktok(TT, B0, B1)
+    spm_a, spm_b = ca["spend"] / N, cb["spend"] / N                      # spend per month
+    g = lambda k, a=ca, b=cb: change(b[k], a[k])
+    rc, cc, sc = g("reach_avg"), g("cpr"), change(spm_b, spm_a)
+    if rc is not None and cc is not None:
+        st.markdown(f"Monthly paid reach {'grew' if rc >= 0 else 'fell'} **{abs(rc):.1%}**, from {short(ca['reach_avg'])} in the {A_NAME.lower()} ({A_RNG}) to {short(cb['reach_avg'])} in the {B_NAME.lower()} ({B_RNG}). "
+                    f"Cost per 1,000 reached went {'down' if cc <= 0 else 'up'} **{abs(cc):.1%}**, from {peso(ca['cpr'], 2)} to {peso(cb['cpr'], 2)}"
+                    + (f", and monthly ad spend {'dropped' if sc < 0 else 'rose'} {abs(sc):.1%} ({peso(spm_a)} to {peso(spm_b)})." if sc is not None else "."))
+    if INTERNAL:
+        bad = [m for m in GAPS if A0 <= m <= B1]
+        if bad:
+            st.warning("Some Ads Manager exports in these periods look incomplete (spend below the Ad Spend Report): " + ", ".join(mlabel(m) for m in sorted(bad))
+                       + ". Spend and reach for those months are understated, so check before showing a cost comparison to the client.", icon=":material/warning:")
+
+    pm_all = D.paid_monthly(ADS)
+    sa, sb = pm_all.loc[A0:A1], pm_all.loc[B0:B1]
+    box = st.container(border=True)                                      # one row per metric so each pair sits level
+    hl, hr = box.columns(2, gap="large")
+    hl.subheader(A_NAME)
+    hl.caption(A_RNG)
+    hr.subheader(B_NAME)
+    hr.caption(B_RNG)
+    fa = lambda c: f"{c['frequency']:.2f}" if not pd.isna(c["frequency"]) else "n/a"
+    for label, va, vb, ch, better, kcol, hp in (("Reach (monthly average)", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, True, "reach", None),
+                                                 ("Cost per 1,000 reached", peso(ca["cpr"], 2), peso(cb["cpr"], 2), cc, False, "cpr", "Ad spend / reach x 1,000. Lower is better."),
+                                                 ("Ad spend (per month)", peso(spm_a), peso(spm_b), sc, None, "spend", "Ads Manager, ex-VAT."),
+                                                 ("Average frequency", fa(ca), fa(cb), g("frequency"), False, "frequency", "Impressions / reach over the month."),
+                                                 ("Video view-through", pct(ca["thru_rate"], 1), pct(cb["thru_rate"], 1), g("thru_rate"), True, "thru_rate", "ThruPlays / impressions.")):
+        ml, mr = box.columns(2, gap="large")
+        with ml:
+            metric(label, va, None, better, sa[kcol], hp)
+        with mr:
+            metric(label, vb, ch, better, sb[kcol], hp, vs=A_NAME.lower())
+
+    def split_trend(title, col, avgs, label_fmt, hover_fmt, tickformat, tickprefix="", zero=False, key=""):
+        """Monthly line across both periods; each period in its own colour with a dashed line at its average."""
+        fig = go.Figure()
+        for ser, color, name, avg in ((sa, "#7F8FA3", A_NAME, avgs[0]), (sb, BLUE, B_NAME, avgs[1])):
+            xs = [m.to_timestamp() for m in ser.index]
+            fig.add_trace(go.Scatter(x=xs, y=ser[col], mode="lines+markers", line=dict(color=color, width=2.5), marker=dict(size=8, color=color),
+                                     name=name, hovertemplate="%{x|%b %Y}: " + hover_fmt + "<extra></extra>"))
+            fig.add_shape(type="line", x0=xs[0], x1=xs[-1], y0=avg, y1=avg, line=dict(color=color, width=1.5, dash="dash"))
+            fig.add_annotation(x=xs[0], y=avg, text=f"<b>{label_fmt(avg)}</b> avg", showarrow=False, xanchor="left", yanchor="bottom", yshift=6, font=dict(color=color, size=12))
+        if zero:
+            fig.update_yaxes(rangemode="tozero")
+        st.markdown(f"**{title}**")
+        show(style_fig(fig, 280, tickprefix=tickprefix, tickformat=tickformat), key)
+
+    a_, b_ = st.columns(2, gap="large")
+    with a_:
+        split_trend("Reach by month", "reach", (ca["reach_avg"], cb["reach_avg"]), lambda v: short(v), "%{y:,.0f}", ",.0f", key="cmp1")
+    with b_:
+        split_trend("Cost per 1,000 reached by month", "cpr", (ca["cpr"], cb["cpr"]), lambda v: peso(v, 2), "₱%{y:,.2f}", ",.0f", tickprefix="₱", key="cmp2")
+    st.caption(f"Dashed lines are the average of each period (for cost per 1,000: total spend / total reach) ({A_NAME.lower()} in grey, {B_NAME.lower()} in blue). Reach adds up campaign reach, so the number of different people is lower.")
+
+    st.subheader("Facebook page and TikTok")
+    TT_OK = TT["month"].min() <= A0                                      # TikTok is only comparable when the first period is fully covered
+    fl, fr = st.columns(2, gap="large", border=True)
+    with fl:
+        st.markdown(f"**{A_NAME}** · {A_RNG}")
+        f1, f2 = st.columns(2)
+        f1.metric("Posts published", num(oa["posts"]))
+        f1.metric("Engagement rate", pct(oa["er"], 2))
+        f2.metric("Average reach per post", num(oa["reach_per_post"]))
+        f2.metric("Post views", num(oa["views"]))
+        st.metric("TikTok video views", num(ta["views"]) if TT_OK else "n/a", help=None if TT_OK else "The TikTok data in the SSOT starts after the start of this period.")
+    with fr:
+        st.markdown(f"**{B_NAME}** · {B_RNG}")
+        f1, f2 = st.columns(2)
+        with f1:
+            metric("Posts published", num(ob["posts"]), change(ob["posts"], oa["posts"]), True, vs=A_NAME.lower())
+            metric("Engagement rate", pct(ob["er"], 2), change(ob["er"], oa["er"]), True, vs=A_NAME.lower())
+        with f2:
+            metric("Average reach per post", num(ob["reach_per_post"]), change(ob["reach_per_post"], oa["reach_per_post"]), True, vs=A_NAME.lower())
+            metric("Post views", num(ob["views"]), change(ob["views"], oa["views"]), True, vs=A_NAME.lower())
+        metric("TikTok video views", num(tb["views"]) if tb["videos"] else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
+    if not TT_OK:
+        st.caption(f"TikTok data in the SSOT starts {mlabel(TT['month'].min())}, so it is not compared with the {A_NAME.lower()}. Video view-through is n/a for months whose export has no ThruPlay column.")
+
+    def _row(label, a, b, chg_, fmt):
+        return {"Metric": label, A_NAME + " (" + A_RNG + ")": fmt(a), B_NAME + " (" + B_RNG + ")": fmt(b), "Change": pct(chg_, 1, True) if chg_ is not None else "n/a"}
+    rows = [_row("Reach (monthly average)", ca["reach_avg"], cb["reach_avg"], rc, num),
+            _row("Cost per 1,000 reached", ca["cpr"], cb["cpr"], cc, lambda v: peso(v, 2)),
+            _row("Ad spend (total)", ca["spend"], cb["spend"], change(cb["spend"], ca["spend"]), peso),
+            _row("Ad spend (per month)", spm_a, spm_b, sc, peso),
+            _row("Average frequency", ca["frequency"], cb["frequency"], g("frequency"), lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"),
+            _row("Video view-through", ca["thru_rate"], cb["thru_rate"], g("thru_rate"), lambda v: pct(v, 1)),
+            _row("Facebook posts published", oa["posts"], ob["posts"], change(ob["posts"], oa["posts"]), num),
+            _row("Facebook engagement rate", oa["er"], ob["er"], change(ob["er"], oa["er"]), lambda v: pct(v, 2)),
+            _row("Facebook reach per post", oa["reach_per_post"], ob["reach_per_post"], change(ob["reach_per_post"], oa["reach_per_post"]), num)]
+    with st.expander("All figures side by side", icon=":material/table:"):
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    st.caption("Change is the second period against the first. For cost per 1,000 reached and frequency, lower is better. Awareness is reported as delivery and cost: reach measures exposure, not recall.")
 
 # ===== Overview =====
 with tabs[0]:

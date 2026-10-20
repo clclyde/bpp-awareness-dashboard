@@ -155,7 +155,11 @@ with st.sidebar:
     st.selectbox("Quick range", list(_presets()), key="preset", on_change=_on_preset)
     st.selectbox("From month", MONTHS, key="m0", format_func=mlabel)
     st.selectbox("To month", MONTHS, key="m1", format_func=mlabel)
-    st.caption(f"Source: {S['source']}. The Ads Manager exports are monthly, so this view works in whole months.")
+    st.caption("The Ads Manager exports are monthly, so this view works in whole months.")
+    INTERNAL = st.toggle("Internal view", key="internal", help="Adds the data source and the data-quality check (Ads Manager vs Ad Spend Report). Leave it off when presenting to the client. "
+                         "It is a display switch, not security: anyone with the link can turn it on.")
+    if INTERNAL:
+        st.caption(f"Source: {S['source']}.")
     with st.expander("How the numbers are defined", icon=":material/info:"):
         st.markdown(
             "Follows the Marketing 3.0 KPI deck, Paid awareness module.\n"
@@ -270,7 +274,7 @@ with tabs[1]:
     st.title("How awareness moved, month by month")
     st.markdown(f"Paid awareness on Facebook up to {mlabel(M1)}. Weekly reach and target audiences are not in the SSOT yet, so the unit is the month.")
     xs = [m.to_timestamp() for m in pm.index]
-    flags = [m in GAPS for m in pm.index]
+    flags = [INTERNAL and m in GAPS for m in pm.index]
     a, b = st.columns(2, gap="large")
     with a:
         trend("Reach", xs, pm["reach"], flags, lambda v: short(v), "%{y:,.0f}", ",.0f", key="tr1")
@@ -281,8 +285,10 @@ with tabs[1]:
         trend("Cost per 1,000 reached", xs, pm["cpr"], flags, lambda v: peso(v, 2), "₱%{y:,.2f}", ",.0f", tickprefix="₱", best="min", key="tr3")
     with d:
         trend("Video view-through", xs, pm["thru_rate"], flags, lambda v: pct(v, 1), "%{y:.1%}", ".0%", key="tr4")
-    st.caption("Yellow markers are months whose Ads Manager export has less spend than the Ad Spend Report, so the export is probably incomplete (see the data check below). "
-               "Reach is the sum of campaign reach per month, so it overstates unique reach. Months before January 2026 use the 2025 exports.")
+    note = "Reach is the sum of campaign reach per month, so it overstates unique reach. Months before January 2026 use the 2025 exports."
+    if INTERNAL:
+        note = "Yellow markers are months whose Ads Manager export has less spend than the Ad Spend Report, so the export is probably incomplete (see the data check below). " + note
+    st.caption(note)
 
     st.subheader("Paid campaigns", anchor=False)
     st.caption(f"{RANGE}, largest spend first")
@@ -296,12 +302,13 @@ with tabs[1]:
         "Frequency": st.column_config.NumberColumn(format="%.2f"),
         "Cost per 1,000 (₱)": st.column_config.NumberColumn(format="%.2f"),
         "View-through": st.column_config.NumberColumn(format="percent")})
-    bad = CHK[CHK["difference"].abs() > 1]
-    with st.expander("Data check: Ads Manager spend vs Ad Spend Report", icon=":material/fact_check:"):
-        st.markdown("Monthly spend in the Ads Manager exports against the BPP-FB line of the Ad Spend Report 2026 (same ex-VAT basis). Months that differ probably have an incomplete export tab.")
-        st.dataframe(CHK.assign(month=[mlabel(m) for m in CHK.index]).set_index("month").style.format("₱{:,.2f}"), width="stretch")
-        if len(bad):
-            st.caption("Differences: " + ", ".join(f"{mlabel(m)} {peso(v)}" for m, v in bad["difference"].items()))
+    if INTERNAL:
+        bad = CHK[CHK["difference"].abs() > 1]
+        with st.expander("Data check: Ads Manager spend vs Ad Spend Report", icon=":material/fact_check:"):
+            st.markdown("Monthly spend in the Ads Manager exports against the BPP-FB line of the Ad Spend Report 2026 (same ex-VAT basis). Months that differ probably have an incomplete export tab.")
+            st.dataframe(CHK.assign(month=[mlabel(m) for m in CHK.index]).set_index("month").style.format("₱{:,.2f}"), width="stretch")
+            if len(bad):
+                st.caption("Differences: " + ", ".join(f"{mlabel(m)} {peso(v)}" for m, v in bad["difference"].items()))
 
 # ===== Content =====
 with tabs[2]:

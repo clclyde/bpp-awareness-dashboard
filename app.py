@@ -240,7 +240,7 @@ def sparkline(series, flags, key):
 
 
 def signed(fmt):
-    """Absolute-change formatter: '+₱1,157' / '−₱0.52' from a formatter of the plain value."""
+    """Absolute-change formatter: e.g. '+₱1,200' or '−₱0.50', from a formatter of the plain value."""
     return lambda d: ("+" if d >= 0 else "−") + fmt(abs(d))
 
 

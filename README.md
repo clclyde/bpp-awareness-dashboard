@@ -24,10 +24,10 @@ The app reads Supabase when it finds `[supabase]` settings (`.streamlit/secrets.
 The data comes from the BPP Content SSOT (Google Sheet) and lives in Supabase (`social_ads_monthly`, `fb_posts`, `tiktok_videos`, read with the BPP-only login). A local, git-ignored `data/bpp_snapshot.json` is the fallback and the file the seed is generated from:
 - **ads**: the monthly Ads Manager export tabs (`AUG - AM` ... `OCT Ads`), one row per campaign (March 2026 is exported per ad).
 - **posts**: the monthly Facebook post tabs plus the `YTD Meta` tab (a few posts were missing from the monthly tabs and were added from it).
-- **tiktok**: `YTD TikTok` (2026) plus the `AUG - TT` and `SEPT - TT` tabs (2025). The SSOT has no TikTok videos for Oct to Dec 2025, so those months are treated as missing data, not zero.
+- **tiktok**: `YTD TikTok` (2026) plus the `AUG - TT` and `SEPT - TT` tabs (2025). The SSOT has no TikTok videos for Oct to Dec 2025; those posts come from TikTok Studio Posts-list screenshots supplied by the marketing team (lifetime views, likes and comments; no shares, so engagement is likes + comments; no post links).
 - **ad_spend_report**: BPP-FB monthly spend from the Ad Spend Report 2026, used only for the internal data check.
 
-Known gaps: the February, April and May 2026 Ads Manager tabs look incomplete (spend below the Ad Spend Report), so those months are understated; they are marked in the internal view. Not integrated yet: TikTok ad spend, follower counts, post sentiment, budget pacing. The refresh is manual (read the sheet, rebuild the snapshot, generate and run the seed); an n8n loader is not built.
+Known gaps: the February and May 2026 Ads Manager tabs look incomplete (spend below the Ad Spend Report), so those months are understated; they are marked in the internal view (April 2026 is complete: the Ad Spend Report's April figure includes VAT). Not integrated yet: follower counts, post sentiment, budget pacing. The refresh is manual (read the sheet, rebuild the snapshot, generate and run the seed); an n8n loader is not built.
 
 ## Definitions and differences from the deck
 Follows the deck's Paid awareness definitions, with these differences, all stated on the pages:

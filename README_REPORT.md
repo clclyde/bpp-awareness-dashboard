@@ -12,5 +12,5 @@ Output: `out/BPP_Awareness_YYYY-MM.pptx` (git-ignored: real client numbers). Wit
 
 Slides: 1 cover, 2 headline and three key figures, 3 paid awareness (5 KPIs + key takeaway), 4 awareness trend (4 charts, 12 months), 5 paid campaigns, 6 Facebook page, 7 TikTok, 8 what to look at next + planner's notes box + definitions.
 
-Rules: the text is rule-based (no LLM); a person checks the numbers against Meta and TikTok and writes the why and what next (Playbook 3.1, 4.9), so the closing slide leaves a box for the planner. The default build is the client version (no data-quality check). The February, April and May 2026 exports are incomplete, so those months' figures are understated until the SSOT is re-exported.
+Rules: the text is rule-based (no LLM); a person checks the numbers against Meta and TikTok and writes the why and what next (Playbook 3.1, 4.9), so the closing slide leaves a box for the planner. The default build is the client version (no data-quality check). The February and May 2026 exports are incomplete, so those months' figures are understated until the SSOT is re-exported.
 Next step if wanted: fill a Google Slides template with `replaceAllText` placeholders, as in the PediaWell `report_deck.py` (`--slides`), once Sir Joven provides the template.

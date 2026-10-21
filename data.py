@@ -52,7 +52,7 @@ def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None) -> dict:
 def load_snapshot(path: Path = SNAPSHOT) -> dict:
     raw = json.loads(Path(path).read_text())
     built = pd.Timestamp(raw["built_at"]).tz_convert(None)
-    return _prepare(pd.DataFrame(raw["ads"]), pd.DataFrame(raw["posts"]), pd.DataFrame(raw["tiktok"]), raw.get("ad_spend_report", {}), built,
+    return _prepare(pd.DataFrame(raw["ads"]), pd.DataFrame(raw["posts"]), pd.DataFrame(raw["tiktok"]), {**raw.get("ad_spend_report", {}), **raw.get("ad_spend_fb_csm", {})}, built,
                     f"BPP Content SSOT snapshot ({built:%d %b %Y})", raw.get("tiktok_ad_spend", {}))
 
 
@@ -62,9 +62,12 @@ SQL = {
     "posts": "select post_id, published, title, type, duration, views, reach, engagements, reactions, comments, shares, clicks, permalink "
              "from pulse.fb_posts where account_code = 'BPP'",
     "tiktok": "select title, link, posted, views, likes, comments, shares, engagement from pulse.tiktok_videos where account_code = 'BPP'",
-    "ref": "select month_start, spend_php from pulse.ad_spend_monthly where account_code = 'BPP' and client_code = 'BPP-FB' and source_tab = 'Summary'",
-    # TikTok ad spend, ex-VAT: the Campaign Spend Monitoring sheet (2026) and the SSOT TikTok tabs (Aug-Oct 2025). Not the Ad Spend Report's BPP-TT line, which mixes VAT bases.
-    "ref_tt": "select month_start, spend_php from pulse.ad_spend_monthly where account_code = 'BPP' and client_code = 'BPP-TT' and source_tab in ('Campaign Spend Monitoring', 'SSOT TT tabs')",
+    # Facebook spend reference: the Ad Spend Report Summary, replaced by Campaign Spend Monitoring for the months where the Summary figure includes VAT
+    "ref": "select month_start, spend_php, source_tab from pulse.ad_spend_monthly where account_code = 'BPP' and client_code = 'BPP-FB' "
+           "and source_tab in ('Summary', 'Campaign Spend Monitoring')",
+    # TikTok ad spend, ex-VAT: the Campaign Spend Monitoring sheet (2026), the SSOT TikTok tabs (Aug-Oct 2025) and the Ad Spend Report 2025 Summary (Nov-Dec 2025).
+    # Not the 2026 Ad Spend Report's BPP-TT line, which mixes VAT bases.
+    "ref_tt": "select month_start, spend_php from pulse.ad_spend_monthly where account_code = 'BPP' and client_code = 'BPP-TT' and source_tab in ('Campaign Spend Monitoring', 'SSOT TT tabs', 'Ad Spend Report 2025')",
 }
 
 
@@ -87,7 +90,8 @@ def _query(conf: dict) -> dict:
 
 def load_db(conf: dict) -> dict:
     raw = _query(conf)
-    ref = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in raw["ref"].itertuples()}
+    rows = sorted(raw["ref"].itertuples(), key=lambda r: r.source_tab == "Campaign Spend Monitoring")   # Campaign Spend Monitoring wins
+    ref = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in rows}
     ref_tt = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in raw["ref_tt"].itertuples()}
     return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), "Supabase (live)", ref_tt)
 
@@ -166,7 +170,7 @@ def unit_costs_by_objective(ads, m0, m1) -> pd.DataFrame:
 
 
 def tiktok_ad_spend(ref_tt, m0, m1):
-    """TikTok ad spend (ex-VAT) of the months m0..m1: Campaign Spend Monitoring for 2026, SSOT TikTok tabs for Aug-Oct 2025. NaN unless every month of the range has a figure."""
+    """TikTok ad spend (ex-VAT) of the months m0..m1: Campaign Spend Monitoring for 2026, SSOT TikTok tabs for Aug-Oct 2025, Ad Spend Report 2025 for Nov-Dec 2025. NaN unless every month of the range has a figure."""
     months = [m0 + i for i in range((m1 - m0).n + 1)]
     return float(sum(ref_tt[m] for m in months)) if all(m in ref_tt for m in months) else float("nan")
 

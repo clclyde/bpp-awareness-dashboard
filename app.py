@@ -546,7 +546,7 @@ with tabs[1]:
     if INTERNAL:
         bad = CHK[CHK["difference"].abs() > 1]
         with st.expander("Data check: Ads Manager spend vs Ad Spend Report", icon=":material/fact_check:"):
-            st.markdown("Monthly spend in the Ads Manager exports against the BPP-FB line of the Ad Spend Report 2026 (same ex-VAT basis). Months that differ probably have an incomplete export tab.")
+            st.markdown("Monthly spend in the Ads Manager exports against the BPP-FB line of the Ad Spend Report 2026 (same ex-VAT basis; Apr 2026 uses the ex-VAT amount from Campaign Spend Monitoring, because the report's April figure includes VAT). Months that differ probably have an incomplete export tab.")
             st.dataframe(CHK.assign(month=[mlabel(m) for m in CHK.index]).set_index("month").style.format("₱{:,.2f}"), width="stretch")
             if len(bad):
                 st.caption("Differences: " + ", ".join(f"{mlabel(m)} {peso(v)}" for m, v in bad["difference"].items()))
@@ -678,7 +678,7 @@ with tabs[3]:
     show_table(paid_rows)
     st.caption("Impr. = impressions. CPM = cost per 1,000 impressions. Cost/1K reach = cost per 1,000 reached. Freq. = impressions / reach. CTR = clicks / impressions. CPC = cost per click. Cost/eng. = cost per engagement. "
                "Facebook figures are from Ads Manager (ex-VAT); reach adds up campaign reach, so it overstates unique reach. CTR and cost per click use all clicks and exist from Mar 2026 onward, so they show n/a for a period that starts earlier. "
-               "TikTok spend (ex-VAT) is from the BPP Campaign Spend Monitoring sheet for 2026 and the SSOT's TikTok tabs for Aug to Oct 2025; Nov and Dec 2025 are not recorded. It is shown only when every month of the period has a figure; impressions and clicks for TikTok ads are not in the data yet.")
+               "TikTok spend (ex-VAT) is from the BPP Campaign Spend Monitoring sheet for 2026, the SSOT's TikTok tabs for Aug to Oct 2025 and the Ad Spend Report 2025 for Nov and Dec 2025. It is shown only when every month of the period has a figure; impressions and clicks for TikTok ads are not in the data yet.")
 
     # ---- page posts and videos (Facebook page posts include boosted posts, so they are not organic-only)
     st.subheader("Page Posts and Videos")

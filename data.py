@@ -159,6 +159,52 @@ def unit_costs(ads, m0, m1) -> dict:
             "clicks_ok": clicks_ok, "tp_ok": tp_ok}
 
 
+def half_cards(ads, posts, tt, a0, n) -> dict:
+    """The KPI cards of the half vs half comparison: the first n months from a0 against the next n months.
+    Used by the dashboard's KPI Cards tab and by the deck (report_deck.py --halves), so both show the same cards in the same order.
+    Groups run from the strongest results to the context (agreed 2026-10-21, the report makes the case for renewing); each group is a list of rows.
+    Card keys: label, a (first period), b (second period), better (True higher is better, False lower is better, None neither),
+    kind (formatting: num, peso0, peso2, peso3, rate, freq), hint, series (monthly values over both periods, for a sparkline), compared
+    and paid_series (the series comes from the Ads Manager exports, so incomplete-export months can be marked)."""
+    a1, b0, b1 = a0 + (n - 1), a0 + n, a0 + (2 * n - 1)
+    months = [a0 + i for i in range(2 * n)]
+    ca, cb = paid(ads, a0, a1), paid(ads, b0, b1)
+    ua, ub = unit_costs(ads, a0, a1), unit_costs(ads, b0, b1)
+    oa, ob = organic(posts, a0, a1), organic(posts, b0, b1)
+    ta, tb = tiktok(tt, a0, a1), tiktok(tt, b0, b1)
+    tt_ok = all(m in set(tt["month"].unique()) for m in months)
+
+    def card(label, a, b, better, kind, hint=None, series=None, compared=True, paid_series=False):
+        return {"label": label, "a": a, "b": b, "better": better, "kind": kind, "hint": hint, "compared": compared, "paid_series": paid_series,
+                "series": None if series is None else [series(m) for m in months]}
+
+    clicks = [card("Click-through rate (CTR)", ua["ctr"], ub["ctr"], True, "rate", "clicks / impressions"),
+              card("Cost per click", ua["cpc"], ub["cpc"], False, "peso2", "lower is better")] if (ua["clicks_ok"] and ub["clicks_ok"]) else []
+    groups = [
+        ("Audience Growth", [
+            [card("Average reach per Facebook post", oa["reach_per_post"], ob["reach_per_post"], True, "num", series=lambda m: organic(posts, m, m)["reach_per_post"]),
+             card("Facebook post views", oa["views"], ob["views"], True, "num", series=lambda m: organic(posts, m, m)["views"]),
+             card("TikTok video views", ta["views"], tb["views"], True, "num", series=lambda m: tiktok(tt, m, m)["views"], compared=tt_ok)],
+            [card("Paid reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads"),
+             card("TikTok engagement per view", ta["eng_per_view"], tb["eng_per_view"], True, "rate", "likes, comments, shares / views", compared=tt_ok)]]),
+        ("More From Every Peso Spent", [
+            [card("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], True, "num", "higher is better", series=lambda m: unit_costs(ads, m, m)["eng_per_k"], paid_series=True),
+             card("Cost per engagement", ua["cpe"], ub["cpe"], False, "peso3", "lower is better", series=lambda m: unit_costs(ads, m, m)["cpe"], paid_series=True),
+             card("Cost per mille (CPM)", ua["cpm"], ub["cpm"], False, "peso2", "lower is better", series=lambda m: unit_costs(ads, m, m)["cpm"], paid_series=True)],
+            [card("Ad engagement rate", ua["er_impr"], ub["er_impr"], True, "rate", "engagements / impressions"),
+             card("Impressions per ₱1,000", ua["impr_per_k"], ub["impr_per_k"], True, "num", "higher is better")] + clicks]),
+        ("Spend and Activity", [
+            [card("Ad spend per month", ca["spend"] / n, cb["spend"] / n, None, "peso0", "Facebook ads"),
+             card("Cost per 1,000 reached", ua["cpr1000"], ub["cpr1000"], False, "peso2", "lower is better"),
+             card("Reach per ₱1,000", ua["reach_per_k"], ub["reach_per_k"], True, "num", "higher is better"),
+             card("Average frequency", ca["frequency"], cb["frequency"], None, "freq", "impressions / reach")],
+            [card("Facebook posts published", oa["posts"], ob["posts"], True, "num"),
+             card("TikTok videos posted", ta["videos"], tb["videos"], True, "num", compared=tt_ok),
+             card("Facebook engagement rate", oa["er"], ob["er"], True, "rate", "engagements / reach")]]),
+    ]
+    return {"a": (a0, a1), "b": (b0, b1), "months": months, "groups": groups, "clicks_ok": ua["clicks_ok"] and ub["clicks_ok"], "tt_ok": tt_ok}
+
+
 def unit_costs_by_objective(ads, m0, m1) -> pd.DataFrame:
     """Same unit costs split by campaign type (reach, boosting, pagelikes, other): the blended figure also moves with the mix of campaigns."""
     d = _in(ads, m0, m1)

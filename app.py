@@ -540,84 +540,25 @@ with tab_cards:
     st.caption("Green means better for BPP, red means worse, grey means about the same (within 2%). Arrows show the direction: for costs, down is better. "
                "The small charts show each month, the first period in grey and the second in blue; hover for the values.")
 
-    kca, kcb = D.paid(ADS, KA0, KA1), D.paid(ADS, KB0, KB1)
-    kua, kub = D.unit_costs(ADS, KA0, KA1), D.unit_costs(ADS, KB0, KB1)
-    koa, kob = D.organic(POSTS, KA0, KA1), D.organic(POSTS, KB0, KB1)
-    kta, ktb = D.tiktok(TT, KA0, KA1), D.tiktok(TT, KB0, KB1)
-    k_tt_ok = all(m in set(TT["month"].unique()) for m in KMONTHS)
-    kflags = GAPS if INTERNAL else None
-
-    def mser(fn, hover):
-        """Monthly series of one KPI over both periods, for the sparkline."""
-        return KMONTHS, [fn(m) for m in KMONTHS], hover
-
-    p2 = lambda v: peso(v, 2)
-    p3 = lambda v: peso(v, 3)
-    pc2 = lambda v: pct(v, 2)
+    HC = D.half_cards(ADS, POSTS, TT, KA0, KN)   # the same cards, in the same order, as the deck (report_deck.py --halves)
+    f2 = lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"
     pts = lambda v: f"{abs(v) * 100:.2f} pts"    # change of a rate, in percentage points
-
-    # Order (agreed 2026-10-21): the report has to make the case for renewing, so the groups run from the strongest results to the context.
-    # 1 audience growth, 2 more from every peso spent, 3 spend and activity. Every figure stays on the page; only the order changes.
-    st.subheader("Audience Growth")
-    o1, o2, o3 = st.columns(3)
-    with o1:
-        kpi_card("Average reach per Facebook post", koa["reach_per_post"], kob["reach_per_post"], num, signed(num), True, KVS,
-                 series=mser(lambda m: D.organic(POSTS, m, m)["reach_per_post"], "%{y:,.0f}"), key="kc_rpp")
-    with o2:
-        kpi_card("Facebook post views", koa["views"], kob["views"], num, signed(num), True, KVS, series=mser(lambda m: D.organic(POSTS, m, m)["views"], "%{y:,.0f}"), key="kc_views")
-    with o3:
-        kpi_card("TikTok video views", kta["views"], ktb["views"], num, signed(num), True, KVS, compared=k_tt_ok,
-                 note=None if k_tt_ok else "TikTok data does not cover every month of both periods",
-                 series=mser(lambda m: D.tiktok(TT, m, m)["views"], "%{y:,.0f}"), key="kc_tt")
-    o4, o5 = st.columns(2)
-    with o4:
-        kpi_card("Paid reach per month", kca["reach_avg"], kcb["reach_avg"], num, signed(num), True, KVS, hint="Facebook ads")
-    with o5:
-        kpi_card("TikTok engagement per view", kta["eng_per_view"], ktb["eng_per_view"], pc2, signed(pts), True, KVS, compared=k_tt_ok, hint="likes, comments, shares / views", rnd=4)
-
-    st.subheader("More From Every Peso Spent")
-    h1, h2, h3 = st.columns(3)
-    with h1:
-        kpi_card("Engagements per ₱1,000", kua["eng_per_k"], kub["eng_per_k"], num, signed(num), True, KVS, hint="higher is better",
-                 series=mser(lambda m: D.unit_costs(ADS, m, m)["eng_per_k"], "%{y:,.0f}"), flags=kflags, key="kc_epk")
-    with h2:
-        kpi_card("Cost per engagement", kua["cpe"], kub["cpe"], p3, signed(p3), False, KVS, hint="lower is better",
-                 series=mser(lambda m: D.unit_costs(ADS, m, m)["cpe"], "₱%{y:,.3f}"), flags=kflags, key="kc_cpe", rnd=3)
-    with h3:
-        kpi_card("Cost per mille (CPM)", kua["cpm"], kub["cpm"], p2, signed(p2), False, KVS, hint="lower is better",
-                 series=mser(lambda m: D.unit_costs(ADS, m, m)["cpm"], "₱%{y:,.2f}"), flags=kflags, key="kc_cpm", rnd=2)
-    b1, b2 = st.columns(2)
-    with b1:
-        kpi_card("Ad engagement rate", kua["er_impr"], kub["er_impr"], pc2, signed(pts), True, KVS, hint="engagements / impressions", rnd=4)
-    with b2:
-        kpi_card("Impressions per ₱1,000", kua["impr_per_k"], kub["impr_per_k"], num, signed(num), True, KVS, hint="higher is better")
-    if kua["clicks_ok"] and kub["clicks_ok"]:
-        c1_, c2_ = st.columns(2)
-        with c1_:
-            kpi_card("Click-through rate (CTR)", kua["ctr"], kub["ctr"], pc2, signed(pts), True, KVS, hint="clicks / impressions", rnd=4)
-        with c2_:
-            kpi_card("Cost per click", kua["cpc"], kub["cpc"], p2, signed(p2), False, KVS, hint="lower is better", rnd=2)
-    elif INTERNAL:
-        st.caption("Internal: click-through rate and cost per click need clicks for every month of both periods. The SSOT exports have clicks only from Mar 2026, "
-                   "so these cards appear once the monthly campaign reports with clicks are loaded.")
-
-    st.subheader("Spend and Activity")
-    s1, s2, s3, s4 = st.columns(4)
-    with s1:
-        kpi_card("Ad spend per month", kca["spend"] / KN, kcb["spend"] / KN, peso, signed(peso), None, KVS, hint="Facebook ads")
-    with s2:
-        kpi_card("Cost per 1,000 reached", kua["cpr1000"], kub["cpr1000"], p2, signed(p2), False, KVS, hint="lower is better", rnd=2)
-    with s3:
-        kpi_card("Reach per ₱1,000", kua["reach_per_k"], kub["reach_per_k"], num, signed(num), True, KVS, hint="higher is better")
-    with s4:
-        kpi_card("Average frequency", kca["frequency"], kcb["frequency"], lambda v: f"{v:.2f}", signed(lambda v: f"{v:.2f}"), None, KVS, hint="impressions / reach", rnd=2)
-    q1, q2, q3 = st.columns(3)
-    with q1:
-        kpi_card("Facebook posts published", koa["posts"], kob["posts"], num, signed(num), True, KVS)
-    with q2:
-        kpi_card("TikTok videos posted", kta["videos"], ktb["videos"], num, signed(num), True, KVS, compared=k_tt_ok)
-    with q3:
-        kpi_card("Facebook engagement rate", koa["er"], kob["er"], pc2, signed(pts), True, KVS, hint="engagements / reach", rnd=4)
+    KINDS = {"num": (num, signed(num), 0, "%{y:,.0f}"), "peso0": (peso, signed(peso), 0, "₱%{y:,.0f}"),
+             "peso2": (lambda v: peso(v, 2), signed(lambda v: peso(v, 2)), 2, "₱%{y:,.2f}"), "peso3": (lambda v: peso(v, 3), signed(lambda v: peso(v, 3)), 3, "₱%{y:,.3f}"),
+             "rate": (lambda v: pct(v, 2), signed(pts), 4, "%{y:.2%}"), "freq": (f2, signed(f2), 2, "%{y:.2f}")}
+    for title, rows_ in HC["groups"]:
+        st.subheader(title)
+        for row in rows_:
+            for col, c in zip(st.columns(len(row)), row):
+                fmt, dfmt, rnd, hover = KINDS[c["kind"]]
+                with col:
+                    kpi_card(c["label"], c["a"], c["b"], fmt, dfmt, c["better"], KVS, hint=c["hint"], compared=c["compared"], rnd=rnd,
+                             note=None if c["compared"] else "Not compared: the data does not cover every month of both periods",
+                             series=(KMONTHS, c["series"], hover) if c["series"] is not None else None,
+                             flags=GAPS if (INTERNAL and c["paid_series"]) else None, key="kc_" + c["label"])
+        if title == "More From Every Peso Spent" and INTERNAL and not HC["clicks_ok"]:
+            st.caption("Internal: click-through rate and cost per click need clicks for every month of both periods. The SSOT exports have clicks only from Mar 2026, "
+                       "so these cards appear once the monthly campaign reports with clicks are loaded.")
     st.caption("Facebook page posts include boosted posts. Reach adds up campaign reach, so the number of different people is lower. "
                "Ad spend is Ads Manager, ex-VAT. A rate's change is shown in percentage points (pts).")
     if INTERNAL and TT[(TT["month"] >= KA0) & (TT["month"] <= KB1)]["shares"].isna().any():

@@ -1,7 +1,7 @@
 """BPP Brand Awareness Review (Streamlit prototype), editorial layout.
 
 The page opens with the finding as a sentence, then the figures, then the evidence. Colours are the Project Swarm deck palette (navy, title blue,
-yellow, red on white); fonts, colours and metric sizes live in .streamlit/config.toml. The only custom HTML is the yellow rule at the top and the red bar at the bottom.
+yellow, red on white); fonts, colours and metric sizes live in .streamlit/config.toml. Custom HTML: the yellow rule at the top, the red bar at the bottom and the KPI cards tab (prominent change pills).
 KPI definitions follow the Marketing 3.0 KPI deck (Paid awareness module): reach, frequency, cost per 1,000 reached, video view-through,
 engagement rate = engagements / reach. Awareness is reported as delivery and cost: reach measures exposure, not recall.
 
@@ -179,6 +179,71 @@ def trend(title, xs, ys, flags, label_fmt, hover_fmt, tickformat, tickprefix="",
         st.caption(f"{'Highest' if best == 'max' else 'Lowest'}: {label_fmt(ys[i])} in {mlabel(pd.Period(xs[i], 'M'))}. Latest: {label_fmt(ys[valid[-1]])}.")
 
 
+# ---------- KPI cards (card version of the half vs half comparison) ----------
+# Read in the order Sir Joven asked for: the number now, then how it moved (a filled pill, the most visible thing after the number),
+# then what it was before. Key KPIs add a monthly sparkline (first period grey, second blue) with hover values.
+GOOD, FLAT = "#1E7D32", "#66717D"
+KC_CSS = f"""<style>
+.kc {{ font-family: {FONT}; color: {TEXT}; min-height: 132px; }}
+.kc-lab {{ font-size: 0.95rem; font-weight: 600; color: {TEXT}; margin-bottom: 6px; }}
+.kc-hint {{ font-weight: 500; color: {MUTED}; font-size: 0.8rem; }}
+.kc-row {{ display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }}
+.kc-val {{ font-size: 2.3rem; font-weight: 700; color: {NAVY}; line-height: 1.1; font-variant-numeric: tabular-nums; }}
+.kc-sm .kc-val {{ font-size: 1.85rem; }}
+.kc-sm .kc-pill {{ font-size: 1.05rem; padding: 4px 10px; }}
+.kc-sm .kc-row {{ gap: 10px; }}
+.kc-pill {{ display: inline-block; padding: 5px 12px; border-radius: 6px; color: #FFFFFF; font-size: 1.2rem; font-weight: 700; line-height: 1.2;
+           font-variant-numeric: tabular-nums; white-space: nowrap; }}
+.kc-prev {{ font-size: 1.02rem; margin-top: 10px; color: {TEXT}; }}
+.kc-prev b {{ color: {NAVY}; }}
+.kc-abs {{ color: {MUTED}; margin-left: 6px; white-space: nowrap; }}
+.kc-foot {{ font-size: 0.82rem; color: {MUTED}; margin-top: 8px; line-height: 1.35; }}
+</style>"""
+
+
+def kpi_card(label, a, b, fmt, diff_fmt, higher_better=True, vs="first period", hint=None, series=None, flags=None, key="", compared=True, note=None, rnd=0, foot=None):
+    """One KPI card: value of the second period, a filled change pill (green = better, red = worse, grey = within 2% or not a better/worse figure),
+    the first period's value and the absolute change, and optionally a monthly sparkline with hover values.
+    rnd = decimals the values are shown with: the absolute change is taken between the shown (rounded) values, so it adds up for the reader."""
+    c = change(b, a) if compared else None
+    if c is None:
+        pill = f'<span class="kc-pill" style="background:{FLAT}">{"Not compared" if not compared else "n/a"}</span>'
+    else:
+        bg = FLAT if (higher_better is None or abs(c) < 0.02) else (GOOD if (c > 0) == higher_better else RED)
+        pill = f'<span class="kc-pill" style="background:{bg}">{"▲" if c > 0 else "▼"} {abs(c):.1%}</span>'
+    d = None if (pd.isna(a) or pd.isna(b) or not compared) else round(b, rnd) - round(a, rnd)
+    prev = f'vs <b>{fmt(a)}</b> · {vs}' + (f'<span class="kc-abs">({diff_fmt(d)})</span>' if d is not None else "")
+    with st.container(border=True, height="stretch"):   # fills its column, so cards in one row end at the same height
+        st.html(f'<div class="kc{"" if series is not None else " kc-sm"}"><div class="kc-lab">{label}' + (f' <span class="kc-hint">· {hint}</span>' if hint else "") + '</div>'
+                f'<div class="kc-row"><span class="kc-val">{fmt(b)}</span>{pill}</div><div class="kc-prev">{note or prev}</div>'
+                + (f'<div class="kc-foot">{foot}</div>' if foot else "") + '</div>')
+        if series is not None:
+            sparkline(series, flags, key)
+
+
+def sparkline(series, flags, key):
+    """Monthly values of both periods: the first period in grey, the second in blue, hover shows the month and value. series = (months, values, hover format)."""
+    months, vals, hover = series
+    n = len(months) // 2
+    fig = go.Figure()
+    for sl, colour in ((slice(0, n + 1), "#A6B8C6"), (slice(n, None), BLUE)):   # the second line starts at the first period's last month so the two join
+        xs = [m.to_timestamp() for m in months[sl]]
+        ys = vals[sl]
+        mk = [YELLOW if (flags and m in flags) else colour for m in months[sl]]
+        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines+markers", line=dict(color=colour, width=2), marker=dict(size=6, color=mk),
+                                 hovertemplate="%{x|%b %Y}: " + hover + "<extra></extra>"))
+    fig.update_layout(height=78, margin=dict(l=2, r=2, t=4, b=2), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False,
+                      hoverlabel=dict(bgcolor="#FFFFFF", font_color=TEXT, font_family=FONT), font=dict(family=FONT))
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
+    show(fig, key)
+
+
+def signed(fmt):
+    """Absolute-change formatter: '+₱1,157' / '−₱0.52' from a formatter of the plain value."""
+    return lambda d: ("+" if d >= 0 else "−") + fmt(abs(d))
+
+
 # ---------- sidebar: month range ----------
 def _presets():
     ytd0 = max(m for m in MONTHS if m.year == LAST.year and m.month == 1) if any(m.year == LAST.year and m.month == 1 for m in MONTHS) else MONTHS[0]
@@ -242,7 +307,7 @@ right.caption(f"Data as of {S['built_at']:%d %b %Y}", text_alignment="right")
 if M1 >= BUILT_MONTH:
     st.warning(f"{mlabel(M1)} was still running when the data was loaded ({S['built_at']:%d %b}): its numbers are partial.", icon=":material/schedule:")
 
-tab_cmp, *tabs = st.tabs(["First vs Second Half", "Overview", "Awareness Trend", "Content", "Channel Diagnostics"])
+tab_cmp, tab_cards, *tabs = st.tabs(["First vs Second Half", "KPI Cards", "Overview", "Awareness Trend", "Content", "Channel Diagnostics"])
 
 # ===== First vs second half (default view) =====
 with tab_cmp:
@@ -264,6 +329,7 @@ with tab_cmp:
     ca, cb = D.paid(ADS, A0, A1), D.paid(ADS, B0, B1)
     oa, ob = D.organic(POSTS, A0, A1), D.organic(POSTS, B0, B1)
     ta, tb = D.tiktok(TT, A0, A1), D.tiktok(TT, B0, B1)
+    ua, ub = D.unit_costs(ADS, A0, A1), D.unit_costs(ADS, B0, B1)
     spm_a, spm_b = ca["spend"] / N, cb["spend"] / N                      # spend per month
     g = lambda k, a=ca, b=cb: change(b[k], a[k])
     rc, cc, sc = g("reach_avg"), g("cpr"), change(spm_b, spm_a)
@@ -273,6 +339,11 @@ with tab_cmp:
     if None not in (rp, pv, er):
         intro.append(f"On the Facebook page, reach per post {mv(rp)} ({num(oa['reach_per_post'])} to {num(ob['reach_per_post'])}) and post views {mv(pv)}"
                      f"{', while' if (er < 0) != (min(rp, pv) < 0) else ', and'} the engagement rate {mv(er)} ({pct(oa['er'], 2)} to {pct(ob['er'], 2)}).")
+    ce, ek = change(ub["cpe"], ua["cpe"]), change(ub["eng_per_k"], ua["eng_per_k"])
+    if ce is not None and ek is not None:
+        intro.append(("Each peso of ad spend bought more: " if ce < 0 and ek > 0 else "Per peso of ad spend, ")
+                     + f"cost per engagement went {'down' if ce <= 0 else 'up'} **{abs(ce):.1%}** ({peso(ua['cpe'], 3)} to {peso(ub['cpe'], 3)}) "
+                     f"and engagements per ₱1,000 {'rose' if ek >= 0 else 'fell'} **{abs(ek):.1%}** ({num(ua['eng_per_k'])} to {num(ub['eng_per_k'])}).")
     if rc is not None and cc is not None:
         intro.append(f"In Facebook paid awareness, reach per month {'grew' if rc >= 0 else 'fell'} **{abs(rc):.1%}**, from {short(ca['reach_avg'])} to {short(cb['reach_avg'])}. "
                      f"Cost per 1,000 reached went {'down' if cc <= 0 else 'up'} **{abs(cc):.1%}**, from {peso(ca['cpr'], 2)} to {peso(cb['cpr'], 2)}"
@@ -299,66 +370,50 @@ with tab_cmp:
     with fl:
         st.markdown(f"**{A_TITLE}** · {A_RNG}")
         f1, f2 = st.columns(2)
-        f1.metric("Posts published", num(oa["posts"]))
-        f1.metric("Engagement rate", pct(oa["er"], 2))
-        f2.metric("Average reach per post", num(oa["reach_per_post"]))
+        f1.metric("Average reach per post", num(oa["reach_per_post"]))
         f2.metric("Post views", num(oa["views"]))
+        f1, f2 = st.columns(2)
         _pa = tt_partial(A0, N)
-        st.metric("TikTok video views" + (" (partial)" if _pa else ""), num(ta["views"]) if _cov(A0, N) else "n/a",
-                  help=None if not _pa else "The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in TT_GAPS if A0 <= m <= A1) + ", so this total is not the whole period.")
-        if _pa:   # says outright that it is the TikTok views figure, not the whole box
-            st.caption("TikTok video views: no data for this period." if _pa == "no months with data" else f"TikTok video views cover {_pa}.")
+        with f1:
+            st.metric("TikTok video views" + (" (partial)" if _pa else ""), num(ta["views"]) if _cov(A0, N) else "n/a",
+                      help=None if not _pa else "The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in TT_GAPS if A0 <= m <= A1) + ", so this total is not the whole period.")
+            if _pa:   # says outright that it is the TikTok views figure, not the whole box
+                st.caption("TikTok video views: no data for this period." if _pa == "no months with data" else f"TikTok video views cover {_pa}.")
+        f2.metric("Posts published", num(oa["posts"]))
+        st.metric("Engagement rate", pct(oa["er"], 2))
     with fr:
         st.markdown(f"**{B_TITLE}** · {B_RNG}")
         f1, f2 = st.columns(2)
         with f1:
-            metric("Posts published", num(ob["posts"]), change(ob["posts"], oa["posts"]), True, vs=A_NAME.lower())
-            metric("Engagement rate", pct(ob["er"], 2), change(ob["er"], oa["er"]), True, vs=A_NAME.lower())
-        with f2:
             metric("Average reach per post", num(ob["reach_per_post"]), change(ob["reach_per_post"], oa["reach_per_post"]), True, vs=A_NAME.lower())
+        with f2:
             metric("Post views", num(ob["views"]), change(ob["views"], oa["views"]), True, vs=A_NAME.lower())
+        f1, f2 = st.columns(2)
         _pb = tt_partial(B0, N)
-        metric("TikTok video views" + (" (partial)" if _pb else ""), num(tb["views"]) if _cov(B0, N) else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
-        if _pb:   # says outright that it is the TikTok views figure, not the whole box
-            st.caption("TikTok video views: no data for this period." if _pb == "no months with data" else f"TikTok video views cover {_pb}.")
+        with f1:
+            metric("TikTok video views" + (" (partial)" if _pb else ""), num(tb["views"]) if _cov(B0, N) else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
+            if _pb:   # says outright that it is the TikTok views figure, not the whole box
+                st.caption("TikTok video views: no data for this period." if _pb == "no months with data" else f"TikTok video views cover {_pb}.")
+        with f2:
+            metric("Posts published", num(ob["posts"]), change(ob["posts"], oa["posts"]), True, vs=A_NAME.lower())
+        metric("Engagement rate", pct(ob["er"], 2), change(ob["er"], oa["er"]), True, vs=A_NAME.lower())
     if INTERNAL and not TT_OK:   # internal view only: the client sees the "(partial)" label and the months it covers
         st.caption(f"The SSOT has no TikTok videos for {', '.join(mlabel(m) for m in TT_GAPS)}. The first period's TikTok total covers only the months that have data, so it is not compared with the second period (no change shown).")
 
-    pm_all = D.paid_monthly(ADS)
-    sa, sb = pm_all.loc[A0:A1], pm_all.loc[B0:B1]
-    st.subheader("Paid Awareness on Facebook")
-    box = st.container(border=True)                                      # one row per metric so each pair sits level
-    hl, hr = box.columns(2, gap="large")
-    hl.subheader(A_TITLE)
-    hl.caption(A_RNG)
-    hr.subheader(B_TITLE)
-    hr.caption(B_RNG)
-    fa = lambda c: f"{c['frequency']:.2f}" if not pd.isna(c["frequency"]) else "n/a"
-    for label, va, vb, ch, better, kcol, hp in (("Reach (monthly average)", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, True, "reach", None),
-                                                 ("Cost per 1,000 reached", peso(ca["cpr"], 2), peso(cb["cpr"], 2), cc, False, "cpr", "Ad spend / reach x 1,000. Lower is better."),
-                                                 ("Ad spend (per month)", peso(spm_a), peso(spm_b), sc, None, "spend", "Ads Manager, ex-VAT."),
-                                                 ("Average frequency", fa(ca), fa(cb), g("frequency"), False, "frequency", "Impressions / reach over the month.")):
-        ml, mr = box.columns(2, gap="large")
-        with ml:
-            metric(label, va, None, better, sa[kcol], hp, baseline=True)
-        with mr:
-            metric(label, vb, ch, better, sb[kcol], hp, vs=A_NAME.lower())
-
     # ----- cost efficiency: unit costs, and what the same budget bought -----
     st.subheader("Cost Efficiency")
-    st.caption("Paid Facebook ads (Ads Manager). Unit costs (left) should go down; what each ₱1,000 of spend buys (right) should go up. Together they show whether the same budget delivers more.")
-    ua, ub = D.unit_costs(ADS, A0, A1), D.unit_costs(ADS, B0, B1)
+    st.caption("Paid Facebook ads (Ads Manager). Unit costs (top rows) should go down; what each ₱1,000 of spend buys (bottom rows) should go up. Together they show whether the same budget delivers more.")
     _vs_ef = A_NAME.lower()
-    _cost_rows = [("Cost per mille (CPM)", "cpm", 2, "Cost per 1,000 impressions = ad spend / impressions x 1,000. Lower is better."),
-                  ("Cost per 1,000 reached", "cpr1000", 2, "Ad spend / reach x 1,000. Lower is better."),
-                  ("Cost per engagement", "cpe", 3, "Ad spend / post engagements (reactions, comments, shares, clicks as counted by Ads Manager). Lower is better.")]
+    _cost_rows = [("Cost per engagement", "cpe", 3, "Ad spend / post engagements (reactions, comments, shares, clicks as counted by Ads Manager). Lower is better."),
+                  ("Cost per mille (CPM)", "cpm", 2, "Cost per 1,000 impressions = ad spend / impressions x 1,000. Lower is better."),
+                  ("Cost per 1,000 reached", "cpr1000", 2, "Ad spend / reach x 1,000. Lower is better.")]
     if ua["clicks_ok"] and ub["clicks_ok"]:
         _cost_rows.append(("Cost per click", "cpc", 2, "Ad spend / clicks (all). Lower is better."))
     if ua["tp_ok"] and ub["tp_ok"]:
         _cost_rows.append(("Cost per ThruPlay", "cptp", 3, "Video ad spend / ThruPlays (15 seconds or completion). Lower is better."))
-    _out_rows = [("Impressions per ₱1,000", "impr_per_k", "Impressions delivered for every ₱1,000 of ad spend. Higher is better."),
-                 ("Reach per ₱1,000", "reach_per_k", "Reach for every ₱1,000 of ad spend. Higher is better."),
-                 ("Engagements per ₱1,000", "eng_per_k", "Post engagements for every ₱1,000 of ad spend. Higher is better.")]
+    _out_rows = [("Engagements per ₱1,000", "eng_per_k", "Post engagements for every ₱1,000 of ad spend. Higher is better."),
+                 ("Impressions per ₱1,000", "impr_per_k", "Impressions delivered for every ₱1,000 of ad spend. Higher is better."),
+                 ("Reach per ₱1,000", "reach_per_k", "Reach for every ₱1,000 of ad spend. Higher is better.")]
     ef = st.container(border=True)                                       # one row per figure, like the paid box above, so each pair sits level
     e1, e2 = ef.columns(2, gap="large")
     e1.subheader(A_TITLE)
@@ -400,6 +455,30 @@ with tab_cmp:
                 "Cost per engagement, change": st.column_config.NumberColumn(format="percent")})
         st.caption(f"Change is the {B_NAME.lower()} against the {A_NAME.lower()}; negative means cheaper. Spend and campaign mix shift between the periods.")
 
+    pm_all = D.paid_monthly(ADS)
+    sa, sb = pm_all.loc[A0:A1], pm_all.loc[B0:B1]
+    st.subheader("Paid Awareness on Facebook")
+    box = st.container(border=True)                                      # one row per metric so each pair sits level
+    hl, hr = box.columns(2, gap="large")
+    hl.subheader(A_TITLE)
+    hl.caption(A_RNG)
+    hr.subheader(B_TITLE)
+    hr.caption(B_RNG)
+    fa = lambda c: f"{c['frequency']:.2f}" if not pd.isna(c["frequency"]) else "n/a"
+    er_m = lambda ser: [D.unit_costs(ADS, m, m)["er_impr"] for m in ser.index]   # monthly ad engagement rate, for the sparkline
+    for label, va, vb, ch, better, sera, serb, hp in (
+            ("Reach (monthly average)", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, True, sa["reach"], sb["reach"], None),
+            ("Ad engagement rate", pct(ua["er_impr"], 2), pct(ub["er_impr"], 2), change(ub["er_impr"], ua["er_impr"]), True, er_m(sa), er_m(sb),
+             "Post engagements / impressions of the Facebook ads. Higher is better."),
+            ("Cost per 1,000 reached", peso(ca["cpr"], 2), peso(cb["cpr"], 2), cc, False, sa["cpr"], sb["cpr"], "Ad spend / reach x 1,000. Lower is better."),
+            ("Ad spend (per month)", peso(spm_a), peso(spm_b), sc, None, sa["spend"], sb["spend"], "Ads Manager, ex-VAT."),
+            ("Average frequency", fa(ca), fa(cb), g("frequency"), False, sa["frequency"], sb["frequency"], "Impressions / reach over the month.")):
+        ml, mr = box.columns(2, gap="large")
+        with ml:
+            metric(label, va, None, better, sera, hp, baseline=True)
+        with mr:
+            metric(label, vb, ch, better, serb, hp, vs=A_NAME.lower())
+
     def split_trend(title, col, avgs, label_fmt, hover_fmt, tickformat, tickprefix="", zero=False, key=""):
         """Monthly line across both periods; each period in its own colour with a dashed line at its average."""
         fig = go.Figure()
@@ -423,21 +502,129 @@ with tab_cmp:
 
     def _row(label, a, b, chg_, fmt):
         return {"Metric": label, A_NAME + " (" + A_RNG + ")": fmt(a), B_NAME + " (" + B_RNG + ")": fmt(b), "Change": pct(chg_, 1, True) if chg_ is not None else "n/a"}
-    rows = [_row("Reach (monthly average)", ca["reach_avg"], cb["reach_avg"], rc, num),
+    rows = [_row("Facebook reach per post", oa["reach_per_post"], ob["reach_per_post"], change(ob["reach_per_post"], oa["reach_per_post"]), num),
+            _row("Facebook post views", oa["views"], ob["views"], change(ob["views"], oa["views"]), num),
+            _row("TikTok video views", ta["views"], tb["views"], change(tb["views"], ta["views"]) if TT_OK else None, num),
+            _row("Facebook posts published", oa["posts"], ob["posts"], change(ob["posts"], oa["posts"]), num),
+            _row("Facebook engagement rate", oa["er"], ob["er"], change(ob["er"], oa["er"]), lambda v: pct(v, 2)),
+            _row("Cost per post engagement", ua["cpe"], ub["cpe"], change(ub["cpe"], ua["cpe"]), lambda v: peso(v, 3)),
+            _row("Cost per 1,000 impressions (CPM)", ua["cpm"], ub["cpm"], change(ub["cpm"], ua["cpm"]), lambda v: peso(v, 2)),
+            _row("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], change(ub["eng_per_k"], ua["eng_per_k"]), num),
+            _row("Impressions per ₱1,000", ua["impr_per_k"], ub["impr_per_k"], change(ub["impr_per_k"], ua["impr_per_k"]), num),
+            _row("Reach (monthly average)", ca["reach_avg"], cb["reach_avg"], rc, num),
+            _row("Ad engagement rate", ua["er_impr"], ub["er_impr"], change(ub["er_impr"], ua["er_impr"]), lambda v: pct(v, 2)),
             _row("Cost per 1,000 reached", ca["cpr"], cb["cpr"], cc, lambda v: peso(v, 2)),
             _row("Ad spend (total)", ca["spend"], cb["spend"], change(cb["spend"], ca["spend"]), peso),
             _row("Ad spend (per month)", spm_a, spm_b, sc, peso),
-            _row("Average frequency", ca["frequency"], cb["frequency"], g("frequency"), lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"),
-            _row("Cost per 1,000 impressions (CPM)", ua["cpm"], ub["cpm"], change(ub["cpm"], ua["cpm"]), lambda v: peso(v, 2)),
-            _row("Cost per post engagement", ua["cpe"], ub["cpe"], change(ub["cpe"], ua["cpe"]), lambda v: peso(v, 3)),
-            _row("Impressions per ₱1,000", ua["impr_per_k"], ub["impr_per_k"], change(ub["impr_per_k"], ua["impr_per_k"]), num),
-            _row("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], change(ub["eng_per_k"], ua["eng_per_k"]), num),
-            _row("Facebook posts published", oa["posts"], ob["posts"], change(ob["posts"], oa["posts"]), num),
-            _row("Facebook engagement rate", oa["er"], ob["er"], change(ob["er"], oa["er"]), lambda v: pct(v, 2)),
-            _row("Facebook reach per post", oa["reach_per_post"], ob["reach_per_post"], change(ob["reach_per_post"], oa["reach_per_post"]), num)]
+            _row("Average frequency", ca["frequency"], cb["frequency"], g("frequency"), lambda v: "n/a" if pd.isna(v) else f"{v:.2f}")]
     with st.expander("All figures side by side", icon=":material/table:"):
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     st.caption("Change is the second period against the first. For cost per 1,000 reached and frequency, lower is better. Awareness is reported as delivery and cost: reach measures exposure, not recall.")
+
+# ===== KPI cards: the half vs half comparison as cards =====
+with tab_cards:
+    st.html(KC_CSS)
+    st.title("Brand Awareness KPIs: First Half vs Second Half")
+    k1, k2, k3 = st.columns([1, 1, 2], vertical_alignment="bottom")
+    KN = k1.selectbox("Months per period", [3, 4, 6], index=2, key="kc_n", help="The first period is followed straight away by a second period of the same length.")
+    K_STARTS = [m for i, m in enumerate(LASTM) if i + 2 * KN <= len(LASTM)]
+    if st.session_state.get("kc_start") not in K_STARTS:
+        st.session_state["kc_start"] = DEFAULT_CMP_START if DEFAULT_CMP_START in K_STARTS else K_STARTS[0]
+    KA0 = k2.selectbox("First period starts", K_STARTS, key="kc_start", format_func=mlabel)
+    KA1, KB0, KB1 = KA0 + (KN - 1), KA0 + KN, KA0 + (2 * KN - 1)
+    k3.caption("This view has its own period selector, like the First vs Second Half tab.")
+    KVS = f"first {KN} months"
+    KMONTHS = [KA0 + i for i in range(2 * KN)]
+    st.markdown(f"**Next {KN} months ({mlabel(KB0)} to {mlabel(KB1)})** against the **first {KN} months ({mlabel(KA0)} to {mlabel(KA1)})**. "
+                "Each card shows the latest figure, how much it moved, and what it was before.")
+    st.caption("Green means better for BPP, red means worse, grey means about the same (within 2%). Arrows show the direction: for costs, down is better. "
+               "The small charts show each month, the first period in grey and the second in blue; hover for the values.")
+
+    kca, kcb = D.paid(ADS, KA0, KA1), D.paid(ADS, KB0, KB1)
+    kua, kub = D.unit_costs(ADS, KA0, KA1), D.unit_costs(ADS, KB0, KB1)
+    koa, kob = D.organic(POSTS, KA0, KA1), D.organic(POSTS, KB0, KB1)
+    kta, ktb = D.tiktok(TT, KA0, KA1), D.tiktok(TT, KB0, KB1)
+    k_tt_ok = all(m in set(TT["month"].unique()) for m in KMONTHS)
+    kflags = GAPS if INTERNAL else None
+
+    def mser(fn, hover):
+        """Monthly series of one KPI over both periods, for the sparkline."""
+        return KMONTHS, [fn(m) for m in KMONTHS], hover
+
+    p2 = lambda v: peso(v, 2)
+    p3 = lambda v: peso(v, 3)
+    pc2 = lambda v: pct(v, 2)
+    pts = lambda v: f"{abs(v) * 100:.2f} pts"    # change of a rate, in percentage points
+
+    # Order (agreed 2026-10-21): the report has to make the case for renewing, so the groups run from the strongest results to the context.
+    # 1 audience growth, 2 more from every peso spent, 3 spend and activity. Every figure stays on the page; only the order changes.
+    st.subheader("Audience Growth")
+    o1, o2, o3 = st.columns(3)
+    with o1:
+        kpi_card("Average reach per Facebook post", koa["reach_per_post"], kob["reach_per_post"], num, signed(num), True, KVS,
+                 series=mser(lambda m: D.organic(POSTS, m, m)["reach_per_post"], "%{y:,.0f}"), key="kc_rpp")
+    with o2:
+        kpi_card("Facebook post views", koa["views"], kob["views"], num, signed(num), True, KVS, series=mser(lambda m: D.organic(POSTS, m, m)["views"], "%{y:,.0f}"), key="kc_views")
+    with o3:
+        kpi_card("TikTok video views", kta["views"], ktb["views"], num, signed(num), True, KVS, compared=k_tt_ok,
+                 note=None if k_tt_ok else "TikTok data does not cover every month of both periods",
+                 series=mser(lambda m: D.tiktok(TT, m, m)["views"], "%{y:,.0f}"), key="kc_tt")
+    o4, o5 = st.columns(2)
+    with o4:
+        kpi_card("Paid reach per month", kca["reach_avg"], kcb["reach_avg"], num, signed(num), True, KVS, hint="Facebook ads")
+    with o5:
+        kpi_card("TikTok engagement per view", kta["eng_per_view"], ktb["eng_per_view"], pc2, signed(pts), True, KVS, compared=k_tt_ok, hint="likes, comments, shares / views", rnd=4)
+
+    st.subheader("More From Every Peso Spent")
+    h1, h2, h3 = st.columns(3)
+    with h1:
+        kpi_card("Engagements per ₱1,000", kua["eng_per_k"], kub["eng_per_k"], num, signed(num), True, KVS, hint="higher is better",
+                 series=mser(lambda m: D.unit_costs(ADS, m, m)["eng_per_k"], "%{y:,.0f}"), flags=kflags, key="kc_epk")
+    with h2:
+        kpi_card("Cost per engagement", kua["cpe"], kub["cpe"], p3, signed(p3), False, KVS, hint="lower is better",
+                 series=mser(lambda m: D.unit_costs(ADS, m, m)["cpe"], "₱%{y:,.3f}"), flags=kflags, key="kc_cpe", rnd=3)
+    with h3:
+        kpi_card("Cost per mille (CPM)", kua["cpm"], kub["cpm"], p2, signed(p2), False, KVS, hint="lower is better",
+                 series=mser(lambda m: D.unit_costs(ADS, m, m)["cpm"], "₱%{y:,.2f}"), flags=kflags, key="kc_cpm", rnd=2)
+    b1, b2 = st.columns(2)
+    with b1:
+        kpi_card("Ad engagement rate", kua["er_impr"], kub["er_impr"], pc2, signed(pts), True, KVS, hint="engagements / impressions", rnd=4)
+    with b2:
+        kpi_card("Impressions per ₱1,000", kua["impr_per_k"], kub["impr_per_k"], num, signed(num), True, KVS, hint="higher is better")
+    if kua["clicks_ok"] and kub["clicks_ok"]:
+        c1_, c2_ = st.columns(2)
+        with c1_:
+            kpi_card("Click-through rate (CTR)", kua["ctr"], kub["ctr"], pc2, signed(pts), True, KVS, hint="clicks / impressions", rnd=4)
+        with c2_:
+            kpi_card("Cost per click", kua["cpc"], kub["cpc"], p2, signed(p2), False, KVS, hint="lower is better", rnd=2)
+    elif INTERNAL:
+        st.caption("Internal: click-through rate and cost per click need clicks for every month of both periods. The SSOT exports have clicks only from Mar 2026, "
+                   "so these cards appear once the monthly campaign reports with clicks are loaded.")
+
+    st.subheader("Spend and Activity")
+    s1, s2, s3, s4 = st.columns(4)
+    with s1:
+        kpi_card("Ad spend per month", kca["spend"] / KN, kcb["spend"] / KN, peso, signed(peso), None, KVS, hint="Facebook ads")
+    with s2:
+        kpi_card("Cost per 1,000 reached", kua["cpr1000"], kub["cpr1000"], p2, signed(p2), False, KVS, hint="lower is better", rnd=2)
+    with s3:
+        kpi_card("Reach per ₱1,000", kua["reach_per_k"], kub["reach_per_k"], num, signed(num), True, KVS, hint="higher is better")
+    with s4:
+        kpi_card("Average frequency", kca["frequency"], kcb["frequency"], lambda v: f"{v:.2f}", signed(lambda v: f"{v:.2f}"), None, KVS, hint="impressions / reach", rnd=2)
+    q1, q2, q3 = st.columns(3)
+    with q1:
+        kpi_card("Facebook posts published", koa["posts"], kob["posts"], num, signed(num), True, KVS)
+    with q2:
+        kpi_card("TikTok videos posted", kta["videos"], ktb["videos"], num, signed(num), True, KVS, compared=k_tt_ok)
+    with q3:
+        kpi_card("Facebook engagement rate", koa["er"], kob["er"], pc2, signed(pts), True, KVS, hint="engagements / reach", rnd=4)
+    st.caption("Facebook page posts include boosted posts. Reach adds up campaign reach, so the number of different people is lower. "
+               "Ad spend is Ads Manager, ex-VAT. A rate's change is shown in percentage points (pts).")
+    if INTERNAL and TT[(TT["month"] >= KA0) & (TT["month"] <= KB1)]["shares"].isna().any():
+        st.caption("Internal: some TikTok posts in these periods come from TikTok Studio screenshots without shares, so their engagement is likes + comments only "
+                   "and engagement per view is slightly understated for those months.")
+    if INTERNAL and GAPS & set(KMONTHS):
+        st.caption("Internal: yellow points are months whose Ads Manager export looks incomplete (" + ", ".join(mlabel(m) for m in sorted(GAPS & set(KMONTHS))) + ").")
 
 # ===== Overview =====
 with tabs[0]:
@@ -678,7 +865,7 @@ with tabs[3]:
     show_table(paid_rows)
     st.caption("Impr. = impressions. CPM = cost per 1,000 impressions. Cost/1K reach = cost per 1,000 reached. Freq. = impressions / reach. CTR = clicks / impressions. CPC = cost per click. Cost/eng. = cost per engagement. "
                "Facebook figures are from Ads Manager (ex-VAT); reach adds up campaign reach, so it overstates unique reach. CTR and cost per click use all clicks and exist from Mar 2026 onward, so they show n/a for a period that starts earlier. "
-               "TikTok spend (ex-VAT) is from the BPP Campaign Spend Monitoring sheet for 2026, the SSOT's TikTok tabs for Aug to Oct 2025 and the Ad Spend Report 2025 for Nov and Dec 2025. It is shown only when every month of the period has a figure; impressions and clicks for TikTok ads are not in the data yet.")
+               "TikTok spend (ex-VAT) is from the BPP Campaign Spend Monitoring sheet for 2026, the SSOT's TikTok tabs for Aug and Oct 2025 and the Ad Spend Report 2025 for Sep, Nov and Dec 2025. It is shown only when every month of the period has a figure; impressions and clicks for TikTok ads are not in the data yet.")
 
     # ---- page posts and videos (Facebook page posts include boosted posts, so they are not organic-only)
     st.subheader("Page Posts and Videos")

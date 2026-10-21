@@ -65,7 +65,7 @@ SQL = {
     # Facebook spend reference: the Ad Spend Report Summary, replaced by Campaign Spend Monitoring for the months where the Summary figure includes VAT
     "ref": "select month_start, spend_php, source_tab from pulse.ad_spend_monthly where account_code = 'BPP' and client_code = 'BPP-FB' "
            "and source_tab in ('Summary', 'Campaign Spend Monitoring')",
-    # TikTok ad spend, ex-VAT: the Campaign Spend Monitoring sheet (2026), the SSOT TikTok tabs (Aug-Oct 2025) and the Ad Spend Report 2025 Summary (Nov-Dec 2025).
+    # TikTok ad spend, ex-VAT: the Campaign Spend Monitoring sheet (2026), the SSOT TikTok tabs (Aug and Oct 2025) and the Ad Spend Report 2025 Summary (Sep, Nov and Dec 2025).
     # Not the 2026 Ad Spend Report's BPP-TT line, which mixes VAT bases.
     "ref_tt": "select month_start, spend_php from pulse.ad_spend_monthly where account_code = 'BPP' and client_code = 'BPP-TT' and source_tab in ('Campaign Spend Monitoring', 'SSOT TT tabs', 'Ad Spend Report 2025')",
 }
@@ -155,6 +155,7 @@ def unit_costs(ads, m0, m1) -> dict:
             "cptp": _div(tp["spend"].sum(), tp["thruplays"].sum()) if tp_ok else float("nan"),
             "impr_per_k": _div(impr * 1000, spend), "reach_per_k": _div(reach * 1000, spend), "eng_per_k": _div(eng * 1000, spend),
             "ctr": _div(ck["clicks_all"].sum(), ck["impressions"].sum()) if clicks_ok else float("nan"), "frequency": _div(impr, reach),
+            "er_impr": _div(eng, impr),   # ad engagement rate: post engagements / impressions
             "clicks_ok": clicks_ok, "tp_ok": tp_ok}
 
 
@@ -170,7 +171,7 @@ def unit_costs_by_objective(ads, m0, m1) -> pd.DataFrame:
 
 
 def tiktok_ad_spend(ref_tt, m0, m1):
-    """TikTok ad spend (ex-VAT) of the months m0..m1: Campaign Spend Monitoring for 2026, SSOT TikTok tabs for Aug-Oct 2025, Ad Spend Report 2025 for Nov-Dec 2025. NaN unless every month of the range has a figure."""
+    """TikTok ad spend (ex-VAT) of the months m0..m1: Campaign Spend Monitoring for 2026, SSOT TikTok tabs for Aug and Oct 2025, Ad Spend Report 2025 for Sep, Nov and Dec 2025. NaN unless every month of the range has a figure."""
     months = [m0 + i for i in range((m1 - m0).n + 1)]
     return float(sum(ref_tt[m] for m in months)) if all(m in ref_tt for m in months) else float("nan")
 

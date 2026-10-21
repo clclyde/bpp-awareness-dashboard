@@ -319,7 +319,7 @@ class Deck:
         self.text(s, "Draft: numbers to be checked against Meta and TikTok before this goes to the client.", 5.6, 5.55, 7.1, 0.4, 10, color=MUTED, align=PP_ALIGN.RIGHT)
 
         # 2. headline
-        s = self.slide("Brand awareness,", R["label"], "Paid awareness on Facebook, with the organic Facebook page and TikTok alongside")
+        s = self.slide("Brand awareness,", R["label"], "Paid awareness on Facebook, with the Facebook page posts (including boosted) and TikTok alongside")
         self.text(s, R["headline"], 0.6, 1.75, 11.6, 1.3, 30, bold=True, color=NAVY)
         self.text(s, R["standfirst"], 0.6, 3.2, 11.4, 1.1, 14, color=TEXT)
         heroes = [("Reach", num(c["reach"]), ch["reach"], True), ("Cost per 1,000 reached", peso(c["cpr"], 2), ch["cpr"], False), ("Average frequency", f"{c['frequency']:.2f}", ch["frequency"], False)]
@@ -364,7 +364,7 @@ class Deck:
         self.note(s, "Boosting campaigns optimise for engagement, so their cost per 1,000 reached is not comparable with reach campaigns.", y=6.1)
 
         # 6. facebook page
-        s = self.slide("Facebook", "page", f"Organic posts published in {R['label']} (lifetime numbers of each post as exported)")
+        s = self.slide("Facebook", "page", f"Page posts published in {R['label']}, including boosted posts (lifetime numbers of each post as exported)")
         co = R["chg_org"]
         for i, (lab, val, line, chg_) in enumerate([("Posts published", num(org["posts"]), "Facebook page", co["posts"]), ("Average reach per post", num(org["reach_per_post"]), "Lifetime reach", co["reach_per_post"]),
                                                     ("Engagement rate", pct(org["er"], 2), "Engagements / reach", co["er"]), ("Post views", num(org["views"]), "Facebook post views", co["views"])]):

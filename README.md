@@ -4,12 +4,12 @@ A brand awareness version of the PediaWell dashboard for BPP (Budol-Proof Pinoy:
 
 ## Design source
 The Marketing 3.0 KPI deck (Example Reports): the dark Razza style, the **Modules** page (Paid awareness cards), the **Awareness Trend** page, key takeaway boxes, and status dots that stay grey while targets are pending sign-off. Three tabs:
-1. **Page one**: Paid awareness (ad spend, reach, average frequency, cost per 1,000 reached, video view-through), Organic social (Facebook posts: reach, engagement rate, views), TikTok (videos, views, engagements), plus an auto takeaway.
+1. **Page one**: Paid awareness (ad spend, reach, average frequency, cost per 1,000 reached, video view-through), Facebook page posts, including boosted posts (reach, engagement rate, views), TikTok (videos, views, engagements), plus an auto takeaway.
 2. **Awareness trend**: reach, frequency, cost per 1,000 reached and video view-through by month, and a paid campaigns table.
 3. **Content**: top Facebook posts by reach, performance by post type, engagement rate by month, top TikTok videos.
 
 ## Look and feel
-Editorial layout (2026-10-20): headline sentence first, then figures with sparklines, then charts and tables; native Streamlit theming in `.streamlit/config.toml` (Streamlit 1.66). Headings use Source Serif 4 (serif), body and figures Montserrat. A plain yellow rule tops the page and a red bar closes it. The tabs are First vs Second Half, Overview, Awareness Trend and Content. Page titles, tab names and section headings are in Title Case; figure labels and captions stay in sentence case.
+Editorial layout (2026-10-20): headline sentence first, then figures with sparklines, then charts and tables; native Streamlit theming in `.streamlit/config.toml` (Streamlit 1.66). Headings use Source Serif 4 (serif), body and figures Montserrat. A plain yellow rule tops the page and a red bar closes it. The tabs are First vs Second Half, Overview, Awareness Trend, Content and Channel Diagnostics. Page titles, tab names and section headings are in Title Case; figure labels and captions stay in sentence case.
 
 Colour scheme and font follow the Project Swarm 2026 Year-to-Date Report deck (values read from the deck file, not estimated): white background, navy `#073763` (headings, cards, table headers, top bar), title blue `#0B3691` (chart lines), yellow `#F1C232` (title highlight, section marks, incomplete-month markers), red `#D10000` (bottom bar, negative changes), text `#3F3F3F`, status green `#93C47D`. Font: **Montserrat** (the deck's main font), loaded from Google Fonts, with Open Sans as fallback. The PediaWell dashboard keeps its own dark design.
 

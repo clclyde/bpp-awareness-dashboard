@@ -27,7 +27,7 @@ def snapshot_exists() -> bool:
     return SNAPSHOT.exists()
 
 
-def _prepare(ads, posts, tt, ref, built_at, source) -> dict:
+def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None) -> dict:
     """Same typing and derived columns whether the rows come from Supabase or from the snapshot."""
     ads, posts, tt = ads.copy(), posts.copy(), tt.copy()
     for c in ["spend", "impressions", "reach", "thruplays", "post_engagements", "shares", "reactions", "saves", "comments", "fb_likes", "clicks_all"]:
@@ -45,14 +45,15 @@ def _prepare(ads, posts, tt, ref, built_at, source) -> dict:
     tt["posted"] = pd.to_datetime(tt["posted"])
     tt["month"] = tt["posted"].dt.to_period("M")
     tt["link"] = tt["link"].fillna("")
-    return {"ads": ads, "posts": posts, "tiktok": tt, "ref": {pd.Period(k, "M"): float(v) for k, v in ref.items()}, "built_at": built_at, "source": source}
+    return {"ads": ads, "posts": posts, "tiktok": tt, "ref": {pd.Period(k, "M"): float(v) for k, v in ref.items()},
+            "ref_tt": {pd.Period(k, "M"): float(v) for k, v in (ref_tt or {}).items()}, "built_at": built_at, "source": source}
 
 
 def load_snapshot(path: Path = SNAPSHOT) -> dict:
     raw = json.loads(Path(path).read_text())
     built = pd.Timestamp(raw["built_at"]).tz_convert(None)
     return _prepare(pd.DataFrame(raw["ads"]), pd.DataFrame(raw["posts"]), pd.DataFrame(raw["tiktok"]), raw.get("ad_spend_report", {}), built,
-                    f"BPP Content SSOT snapshot ({built:%d %b %Y})")
+                    f"BPP Content SSOT snapshot ({built:%d %b %Y})", raw.get("tiktok_ad_spend", {}))
 
 
 SQL = {
@@ -62,6 +63,8 @@ SQL = {
              "from pulse.fb_posts where account_code = 'BPP'",
     "tiktok": "select title, link, posted, views, likes, comments, shares, engagement from pulse.tiktok_videos where account_code = 'BPP'",
     "ref": "select month_start, spend_php from pulse.ad_spend_monthly where account_code = 'BPP' and client_code = 'BPP-FB' and source_tab = 'Summary'",
+    # TikTok ad spend, ex-VAT: the Campaign Spend Monitoring sheet (2026) and the SSOT TikTok tabs (Aug-Oct 2025). Not the Ad Spend Report's BPP-TT line, which mixes VAT bases.
+    "ref_tt": "select month_start, spend_php from pulse.ad_spend_monthly where account_code = 'BPP' and client_code = 'BPP-TT' and source_tab in ('Campaign Spend Monitoring', 'SSOT TT tabs')",
 }
 
 
@@ -85,7 +88,8 @@ def _query(conf: dict) -> dict:
 def load_db(conf: dict) -> dict:
     raw = _query(conf)
     ref = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in raw["ref"].itertuples()}
-    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), "Supabase (live)")
+    ref_tt = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in raw["ref_tt"].itertuples()}
+    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), "Supabase (live)", ref_tt)
 
 
 def load(conf: dict | None = None) -> dict:
@@ -146,6 +150,7 @@ def unit_costs(ads, m0, m1) -> dict:
             "cpc": _div(ck["spend"].sum(), ck["clicks_all"].sum()) if clicks_ok else float("nan"),
             "cptp": _div(tp["spend"].sum(), tp["thruplays"].sum()) if tp_ok else float("nan"),
             "impr_per_k": _div(impr * 1000, spend), "reach_per_k": _div(reach * 1000, spend), "eng_per_k": _div(eng * 1000, spend),
+            "ctr": _div(ck["clicks_all"].sum(), ck["impressions"].sum()) if clicks_ok else float("nan"), "frequency": _div(impr, reach),
             "clicks_ok": clicks_ok, "tp_ok": tp_ok}
 
 
@@ -155,8 +160,15 @@ def unit_costs_by_objective(ads, m0, m1) -> pd.DataFrame:
     rows = {}
     for obj, g in d.groupby("objective"):
         sp, im, re, en = g["spend"].sum(), g["impressions"].sum(), g["reach"].sum(), g["post_engagements"].sum()
-        rows[obj] = {"spend": sp, "cpm": _div(sp * 1000, im), "cpr1000": _div(sp * 1000, re), "cpe": _div(sp, en)}
+        rows[obj] = {"spend": sp, "impressions": im, "reach": re, "engagements": en, "frequency": _div(im, re),
+                     "cpm": _div(sp * 1000, im), "cpr1000": _div(sp * 1000, re), "cpe": _div(sp, en)}
     return pd.DataFrame(rows).T
+
+
+def tiktok_ad_spend(ref_tt, m0, m1):
+    """TikTok ad spend (ex-VAT) of the months m0..m1: Campaign Spend Monitoring for 2026, SSOT TikTok tabs for Aug-Oct 2025. NaN unless every month of the range has a figure."""
+    months = [m0 + i for i in range((m1 - m0).n + 1)]
+    return float(sum(ref_tt[m] for m in months)) if all(m in ref_tt for m in months) else float("nan")
 
 
 def paid_monthly(ads) -> pd.DataFrame:

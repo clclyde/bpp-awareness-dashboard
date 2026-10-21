@@ -242,7 +242,7 @@ right.caption(f"Data as of {S['built_at']:%d %b %Y}", text_alignment="right")
 if M1 >= BUILT_MONTH:
     st.warning(f"{mlabel(M1)} was still running when the data was loaded ({S['built_at']:%d %b}): its numbers are partial.", icon=":material/schedule:")
 
-tab_cmp, *tabs = st.tabs(["First vs Second Half", "Overview", "Awareness Trend", "Content"])
+tab_cmp, *tabs = st.tabs(["First vs Second Half", "Overview", "Awareness Trend", "Content", "Channel Diagnostics"])
 
 # ===== First vs second half (default view) =====
 with tab_cmp:
@@ -603,5 +603,142 @@ with tabs[2]:
             "Engagement per view": st.column_config.NumberColumn(format="percent"), "Link": st.column_config.LinkColumn(display_text="Open")})
     else:
         st.info("No TikTok videos in this range.")
+
+# ===== Channel Diagnostics =====
+with tabs[3]:
+    # ----- periods: two equal periods, own selector, default 6 months starting Oct 2025 (same idea as the first tab)
+    _lm = [m for m in MONTHS if m <= LAST]
+    st.title("Channel Diagnostics")
+    cs1, cs2, cs3 = st.columns([1, 1, 2], vertical_alignment="bottom")
+    CN = cs1.selectbox("Months per period", [3, 4, 6], index=2, key="ch_n", help="The first period is followed straight away by a second period of the same length.")
+    _starts = [m for i, m in enumerate(_lm) if i + 2 * CN <= len(_lm)]
+    if st.session_state.get("ch_start") not in _starts:
+        st.session_state["ch_start"] = pd.Period("2025-10", "M") if pd.Period("2025-10", "M") in _starts else _starts[0]
+    CA0 = cs2.selectbox("First period starts", _starts, key="ch_start", format_func=mlabel)
+    CA1, CB0, CB1 = CA0 + (CN - 1), CA0 + CN, CA0 + (2 * CN - 1)
+    C_A, C_B = f"First {CN} Months", f"Next {CN} Months"
+    C_ARNG, C_BRNG = f"{mlabel(CA0)} to {mlabel(CA1)}", f"{mlabel(CB0)} to {mlabel(CB1)}"
+    cs3.caption("This view has its own period selector. The sidebar months drive the Overview, Awareness Trend and Content tabs.")
+
+    def status_of(chg, lower_is_better=True):
+        """Efficiency status from the change in one metric vs the first period (the PediaWell thresholds, proposed and still to be calibrated)."""
+        if chg is None or pd.isna(chg):
+            return "n/a"
+        c = -chg if lower_is_better else chg
+        if c >= 0.05:
+            return "Improved"
+        if c > -0.05:
+            return "Steady"
+        if c > -0.15:
+            return "Slightly weaker"
+        return "Weaker"
+
+    _status_bg = {"Improved": "#E3F1DF", "Steady": "#EEF1F5", "Slightly weaker": "#FFF3CD", "Weaker": "#FBE1E1", "Baseline": "#EEF1F5"}
+
+    def show_table(rows):
+        """Channel, period and status come first so the verdict is visible without scrolling; the wide 'What changed' text goes last."""
+        short_names = {"Impressions": "Impr.", "Cost per 1,000 reached": "Cost/1K reach", "Frequency": "Freq.", "Cost per engagement": "Cost/eng.", "Posts / videos": "Posts",
+                       "Engagement rate (÷ reach)": "Eng. rate", "Engagement per view": "Eng./view", "Reach or views per post": "Per post", "Share of spend": "% of spend"}
+        df = pd.DataFrame(rows).rename(columns=short_names)
+        first = df.columns[0]
+        df = df[[first, "Period", "Status"] + [c for c in df.columns if c not in (first, "Period", "Status", "What changed")] + ["What changed"]]
+        sty = df.style.map(lambda v: f"background-color: {_status_bg.get(v, 'transparent')}; font-weight: 600", subset=["Status"])
+        cfg = {c: st.column_config.TextColumn(width=int(min(max(len(c), df[c].astype(str).str.len().max()) * 7.4 + 26, 150))) for c in df.columns}
+        cfg["What changed"] = st.column_config.TextColumn(width=330)
+        cfg[first] = st.column_config.TextColumn(width=int(min(max(len(first), df[first].astype(str).str.len().max()) * 7.4 + 26, 220)))
+        cfg["Period"] = st.column_config.TextColumn(width=170)
+        st.dataframe(sty, hide_index=True, width="stretch", column_config=cfg)
+
+    def chg_text(name, chg):
+        return f"{name} {pct(chg, 1, True)} vs {C_A.lower()}" if chg is not None else ""
+
+    ua, ub = D.unit_costs(ADS, CA0, CA1), D.unit_costs(ADS, CB0, CB1)
+    cpm_chg = change(ub["cpm"], ua["cpm"])
+    oa_c, ob_c = D.organic(POSTS, CA0, CA1), D.organic(POSTS, CB0, CB1)
+    st.markdown(f"Comparing {C_ARNG} with {C_BRNG}: Facebook ads cost per 1,000 impressions went from **{peso(ua['cpm'], 2)}** to **{peso(ub['cpm'], 2)}** ({pct(cpm_chg, 1, True)}) "
+                f"and cost per engagement from **{peso(ua['cpe'], 3)}** to **{peso(ub['cpe'], 3)}**; the Facebook page's engagement rate went from **{pct(oa_c['er'], 2)}** to **{pct(ob_c['er'], 2)}**. "
+                "Status compares each channel in the second period with the first, using proposed thresholds that are still to be calibrated with the client.")
+
+    # ---- paid channels
+    st.subheader("Paid Channels")
+
+    def fb_row(u, label_period, status, what):
+        return {"Channel": "Facebook ads", "Period": label_period, "Status": status, "Spend": peso(u["spend"]), "Impressions": num(u["impressions"]), "CPM": peso(u["cpm"], 2),
+                "Reach": num(u["reach"]), "Cost per 1,000 reached": peso(u["cpr1000"], 2), "Frequency": f"{u['frequency']:.2f}", "CTR": pct(u["ctr"], 2) if u["clicks_ok"] else "n/a",
+                "CPC": peso(u["cpc"], 2) if u["clicks_ok"] else "n/a", "Cost per engagement": peso(u["cpe"], 3), "What changed": what}
+
+    def tt_ad_row(spend, label_period, what):
+        return {"Channel": "TikTok ads", "Period": label_period, "Status": "n/a", "Spend": peso(spend) if not pd.isna(spend) else "n/a", "Impressions": "n/a", "CPM": "n/a", "Reach": "n/a",
+                "Cost per 1,000 reached": "n/a", "Frequency": "n/a", "CTR": "n/a", "CPC": "n/a", "Cost per engagement": "n/a", "What changed": what}
+
+    tts_a, tts_b = D.tiktok_ad_spend(S["ref_tt"], CA0, CA1), D.tiktok_ad_spend(S["ref_tt"], CB0, CB1)
+    paid_rows = [fb_row(ua, C_ARNG, "Baseline", ""), fb_row(ub, C_BRNG, status_of(cpm_chg, True), chg_text("Cost per mille", cpm_chg)),
+                 tt_ad_row(tts_a, C_ARNG, ""),
+                 tt_ad_row(tts_b, C_BRNG, (chg_text("Spend", change(tts_b, tts_a)) + ". " if not (pd.isna(tts_a) or pd.isna(tts_b)) else "") + "Spend only: no TikTok ad performance data yet")]
+    show_table(paid_rows)
+    st.caption("Impr. = impressions. CPM = cost per 1,000 impressions. Cost/1K reach = cost per 1,000 reached. Freq. = impressions / reach. CTR = clicks / impressions. CPC = cost per click. Cost/eng. = cost per engagement. "
+               "Facebook figures are from Ads Manager (ex-VAT); reach adds up campaign reach, so it overstates unique reach. CTR and cost per click use all clicks and exist from Mar 2026 onward, so they show n/a for a period that starts earlier. "
+               "TikTok spend (ex-VAT) is from the BPP Campaign Spend Monitoring sheet for 2026 and the SSOT's TikTok tabs for Aug to Oct 2025; Nov and Dec 2025 are not recorded. It is shown only when every month of the period has a figure; impressions and clicks for TikTok ads are not in the data yet.")
+
+    # ---- page posts and videos (Facebook page posts include boosted posts, so they are not organic-only)
+    st.subheader("Page Posts and Videos")
+    _tt_all = set(TT["month"].unique())
+    cov = lambda m0, n_: [m for m in (m0 + i for i in range(n_)) if m in _tt_all]
+    full_a, full_b = len(cov(CA0, CN)) == CN, len(cov(CB0, CN)) == CN
+    ta_c, tb_c = D.tiktok(TT, CA0, CA1), D.tiktok(TT, CB0, CB1)
+    er_chg = change(ob_c["er"], oa_c["er"])
+    tt_chg = change(tb_c["eng_per_view"], ta_c["eng_per_view"]) if (full_a and full_b) else None
+
+    def fbp_row(o, label_period, status, what):
+        return {"Channel": "Facebook page (posts)", "Period": label_period, "Status": status, "Posts / videos": num(o["posts"]), "Views": num(o["views"]), "Reach": num(o["reach"]),
+                "Engagements": num(o["engagements"]), "Engagement rate (÷ reach)": pct(o["er"], 2), "Engagement per view": "n/a", "Reach or views per post": num(o["reach_per_post"]) + " reach", "What changed": what}
+
+    def tkv_row(t, label_period, covered, full, status, what):
+        have = len(covered) > 0
+        return {"Channel": "TikTok (videos)" if full or not have else "TikTok (videos, partial)", "Period": label_period, "Status": status, "Posts / videos": num(t["videos"]) if have else "n/a",
+                "Views": num(t["views"]) if have else "n/a", "Reach": "n/a", "Engagements": num(t["engagements"]) if have else "n/a", "Engagement rate (÷ reach)": "n/a",
+                "Engagement per view": pct(t["eng_per_view"], 1) if have else "n/a", "Reach or views per post": (num(t["views_per_video"]) + " views") if have else "n/a", "What changed": what}
+
+    org_rows = [fbp_row(oa_c, C_ARNG, "Baseline", ""), fbp_row(ob_c, C_BRNG, status_of(er_chg, False), chg_text("Engagement rate", er_chg)),
+                tkv_row(ta_c, C_ARNG, cov(CA0, CN), full_a, "Baseline" if full_a else "n/a", ""),
+                tkv_row(tb_c, C_BRNG, cov(CB0, CN), full_b, status_of(tt_chg, False), chg_text("Engagement per view", tt_chg) if tt_chg is not None else "Not compared: TikTok video data does not cover every month of both periods")]
+    show_table(org_rows)
+    st.caption("Eng. rate = engagements / reach (Facebook). Eng./view = engagements / views (TikTok, which has no reach in the data). Per post = reach per post (Facebook) or views per video (TikTok). "
+               "Facebook page posts include boosted posts: from Mar 2026 the exports show most of their views come from boosting, so these are not organic-only figures. Numbers are lifetime figures of the posts published in the period. Status uses the change in engagement rate (Facebook) or engagement per view (TikTok); higher is better.")
+    if INTERNAL and not (full_a and full_b):
+        _gap_c = [m for m in (CA0 + i for i in range(2 * CN)) if m not in _tt_all]
+        st.caption("Internal: the SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in _gap_c) + ".")
+
+    # ---- Facebook ads by campaign type
+    st.subheader("Facebook Ads by Campaign Type")
+    oca, ocb = D.unit_costs_by_objective(ADS, CA0, CA1), D.unit_costs_by_objective(ADS, CB0, CB1)
+    _names = {"reach": "Reach campaigns", "boosting": "Boosting (engagement, views)", "pagelikes": "Page-like campaigns", "other": "Other"}
+
+    def type_row(name, label_period, r, total_spend, status, what):
+        return {"Campaign type": name, "Period": label_period, "Status": status, "Spend": peso(r["spend"]), "Share of spend": pct(r["spend"] / total_spend, 0) if total_spend else "n/a",
+                "Impressions": num(r["impressions"]), "CPM": peso(r["cpm"], 2), "Reach": num(r["reach"]), "Cost per 1,000 reached": peso(r["cpr1000"], 2),
+                "Cost per engagement": peso(r["cpe"], 3), "Frequency": f"{r['frequency']:.2f}", "What changed": what}
+
+    type_rows = []
+    for obj in [o for o in _names if (o in oca.index) or (o in ocb.index)]:
+        ra = oca.loc[obj] if obj in oca.index else None
+        rb = ocb.loc[obj] if obj in ocb.index else None
+        small = any(r is not None and (ua["spend"] if r is ra else ub["spend"]) and r["spend"] / (ua["spend"] if r is ra else ub["spend"]) < 0.02 for r in (ra, rb))
+        chg_o = change(rb["cpm"], ra["cpm"]) if (ra is not None and rb is not None and not small) else None
+        if ra is not None:
+            type_rows.append(type_row(_names[obj], C_ARNG, ra, ua["spend"], "Baseline", ""))
+        if rb is not None:
+            what = chg_text("Cost per mille", chg_o) if chg_o is not None else ("Too little spend to judge" if small else ("No spend in the first period" if ra is None else ""))
+            type_rows.append(type_row(_names[obj], C_BRNG, rb, ub["spend"], status_of(chg_o, True), what))
+    if type_rows:
+        _tot_a = {"spend": ua["spend"], "impressions": ua["impressions"], "cpm": ua["cpm"], "reach": ua["reach"], "cpr1000": ua["cpr1000"], "cpe": ua["cpe"], "frequency": ua["frequency"]}
+        _tot_b = {"spend": ub["spend"], "impressions": ub["impressions"], "cpm": ub["cpm"], "reach": ub["reach"], "cpr1000": ub["cpr1000"], "cpe": ub["cpe"], "frequency": ub["frequency"]}
+        type_rows.append(type_row("All Facebook ads", C_ARNG, _tot_a, ua["spend"], "Baseline", ""))
+        type_rows.append(type_row("All Facebook ads", C_BRNG, _tot_b, ub["spend"], status_of(cpm_chg, True), chg_text("Cost per mille", cpm_chg)))
+        show_table(type_rows)
+    else:
+        st.info("No Facebook ads in these periods.")
+    st.caption("Reach, boosting (engagement and video views) and page-like campaigns have very different costs, so compare each type with itself. Status uses the change in cost per mille from the first period to the second; lower is better. "
+               "Improved is 5% lower or better, Steady is within 5%, Slightly weaker is up to 15% higher, Weaker is beyond that. A type with under 2% of the spend gets no status. These are proposed thresholds, to be calibrated with the client.")
 
 st.html(f'<div style="height:8px;background:{RED};margin-top:2rem"></div>')

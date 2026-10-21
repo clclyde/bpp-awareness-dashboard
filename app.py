@@ -239,12 +239,13 @@ tab_cmp, *tabs = st.tabs(["First vs Second Half", "Overview", "Awareness Trend",
 # ===== First vs second half (default view) =====
 with tab_cmp:
     LASTM = [m for m in MONTHS if m <= LAST]
+    DEFAULT_CMP_START = pd.Period("2025-10", "M")                          # agreed default: the first period starts in Oct 2025
     st.title("Brand Awareness: First Half vs Second Half")
     sel1, sel2, sel3 = st.columns([1, 1, 2], vertical_alignment="bottom")
     N = sel1.selectbox("Months per period", [3, 4, 6], index=2, key="cmp_n", help="The first period is followed straight away by a second period of the same length.")
     STARTS = [m for i, m in enumerate(LASTM) if i + 2 * N <= len(LASTM)]
     if st.session_state.get("cmp_start") not in STARTS:
-        st.session_state["cmp_start"] = STARTS[0]
+        st.session_state["cmp_start"] = DEFAULT_CMP_START if DEFAULT_CMP_START in STARTS else STARTS[0]   # default view: Oct 2025 to Mar 2026 vs Apr to Sep 2026
     A0 = sel2.selectbox("First period starts", STARTS, key="cmp_start", format_func=mlabel)
     A1, B0, B1 = A0 + (N - 1), A0 + N, A0 + (2 * N - 1)
     A_NAME, B_NAME = f"First {N} months", f"Next {N} months"

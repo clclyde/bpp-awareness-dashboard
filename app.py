@@ -266,9 +266,9 @@ with tab_cmp:
         intro.append(f"On the Facebook page, reach per post {mv(rp)} ({num(oa['reach_per_post'])} to {num(ob['reach_per_post'])}) and post views {mv(pv)}"
                      f"{', while' if (er < 0) != (min(rp, pv) < 0) else ', and'} the engagement rate {mv(er)} ({pct(oa['er'], 2)} to {pct(ob['er'], 2)}).")
     if rc is not None and cc is not None:
-        intro.append(f"Paid reach per month {'grew' if rc >= 0 else 'fell'} **{abs(rc):.1%}**, from {short(ca['reach_avg'])} to {short(cb['reach_avg'])}. "
+        intro.append(f"In Facebook paid awareness, reach per month {'grew' if rc >= 0 else 'fell'} **{abs(rc):.1%}**, from {short(ca['reach_avg'])} to {short(cb['reach_avg'])}. "
                      f"Cost per 1,000 reached went {'down' if cc <= 0 else 'up'} **{abs(cc):.1%}**, from {peso(ca['cpr'], 2)} to {peso(cb['cpr'], 2)}"
-                     + (f", and monthly ad spend {'dropped' if sc < 0 else 'rose'} {abs(sc):.1%} ({peso(spm_a)} to {peso(spm_b)})." if sc is not None else "."))
+                     + (f", and monthly Facebook ad spend {'dropped' if sc < 0 else 'rose'} {abs(sc):.1%} ({peso(spm_a)} to {peso(spm_b)})." if sc is not None else "."))
     if intro:
         st.markdown(" ".join(intro))
     if INTERNAL:
@@ -336,6 +336,62 @@ with tab_cmp:
         with mr:
             metric(label, vb, ch, better, sb[kcol], hp, vs=A_NAME.lower())
 
+    # ----- cost efficiency: unit costs, and what the same budget bought -----
+    st.subheader("Cost Efficiency")
+    st.caption("Paid Facebook ads (Ads Manager). Unit costs (left) should go down; what each ₱1,000 of spend buys (right) should go up. Together they show whether the same budget delivers more.")
+    ua, ub = D.unit_costs(ADS, A0, A1), D.unit_costs(ADS, B0, B1)
+    _vs_ef = A_NAME.lower()
+    _cost_rows = [("Cost per mille (CPM)", "cpm", 2, "Cost per 1,000 impressions = ad spend / impressions x 1,000. Lower is better."),
+                  ("Cost per 1,000 reached", "cpr1000", 2, "Ad spend / reach x 1,000. Lower is better."),
+                  ("Cost per engagement", "cpe", 3, "Ad spend / post engagements (reactions, comments, shares, clicks as counted by Ads Manager). Lower is better.")]
+    if ua["clicks_ok"] and ub["clicks_ok"]:
+        _cost_rows.append(("Cost per click", "cpc", 2, "Ad spend / clicks (all). Lower is better."))
+    if ua["tp_ok"] and ub["tp_ok"]:
+        _cost_rows.append(("Cost per ThruPlay", "cptp", 3, "Video ad spend / ThruPlays (15 seconds or completion). Lower is better."))
+    _out_rows = [("Impressions per ₱1,000", "impr_per_k", "Impressions delivered for every ₱1,000 of ad spend. Higher is better."),
+                 ("Reach per ₱1,000", "reach_per_k", "Reach for every ₱1,000 of ad spend. Higher is better."),
+                 ("Engagements per ₱1,000", "eng_per_k", "Post engagements for every ₱1,000 of ad spend. Higher is better.")]
+    ef = st.container(border=True)                                       # one row per figure, like the paid box above, so each pair sits level
+    e1, e2 = ef.columns(2, gap="large")
+    e1.subheader(A_TITLE)
+    e1.caption(A_RNG)
+    e2.subheader(B_TITLE)
+    e2.caption(B_RNG)
+    ef.caption("Costs (lower is better)")
+    for label, k, dec, hp in _cost_rows:
+        ml, mr = ef.columns(2, gap="large")
+        with ml:
+            metric(label, peso(ua[k], dec), None, False, help=hp, baseline=True)
+        with mr:
+            metric(label, peso(ub[k], dec), change(ub[k], ua[k]), False, help=hp, vs=_vs_ef)
+    ef.caption("What each ₱1,000 of spend bought (higher is better)")
+    for label, k, hp in _out_rows:
+        ml, mr = ef.columns(2, gap="large")
+        with ml:
+            metric(label, num(ua[k]), None, True, help=hp, baseline=True)
+        with mr:
+            metric(label, num(ub[k]), change(ub[k], ua[k]), True, help=hp, vs=_vs_ef)
+    if not (ua["clicks_ok"] and ub["clicks_ok"]):
+        st.caption("Cost per click and cost per ThruPlay appear when both periods are from Mar 2026 onward; earlier data does not include clicks or ThruPlays.")
+    with st.expander("Unit costs by campaign type", icon=":material/stacked_bar_chart:"):
+        st.markdown("Reach, boosting (engagement and video views) and page-like campaigns have very different costs, so the blended figures above also move with the mix of campaigns. Compare like with like here.")
+        oa_, ob_ = D.unit_costs_by_objective(ADS, A0, A1), D.unit_costs_by_objective(ADS, B0, B1)
+        _names = {"reach": "Reach", "boosting": "Boosting (engagement, views)", "pagelikes": "Page likes", "other": "Other"}
+        _rows = []
+        for obj in [o for o in _names if o in oa_.index or o in ob_.index]:
+            a_r = oa_.loc[obj] if obj in oa_.index else None
+            b_r = ob_.loc[obj] if obj in ob_.index else None
+            _g = lambda r, k: float("nan") if r is None else float(r[k])
+            _rows.append({"Campaign type": _names[obj], f"Spend, {A_NAME} (₱)": _g(a_r, "spend"), f"Spend, {B_NAME} (₱)": _g(b_r, "spend"),
+                          "CPM, change": change(_g(b_r, "cpm"), _g(a_r, "cpm")), "Cost per 1,000 reached, change": change(_g(b_r, "cpr1000"), _g(a_r, "cpr1000")),
+                          "Cost per engagement, change": change(_g(b_r, "cpe"), _g(a_r, "cpe"))})
+        if _rows:
+            st.dataframe(pd.DataFrame(_rows), hide_index=True, width="stretch", column_config={
+                f"Spend, {A_NAME} (₱)": st.column_config.NumberColumn(format="localized"), f"Spend, {B_NAME} (₱)": st.column_config.NumberColumn(format="localized"),
+                "CPM, change": st.column_config.NumberColumn(format="percent"), "Cost per 1,000 reached, change": st.column_config.NumberColumn(format="percent"),
+                "Cost per engagement, change": st.column_config.NumberColumn(format="percent")})
+        st.caption(f"Change is the {B_NAME.lower()} against the {A_NAME.lower()}; negative means cheaper. Spend and campaign mix shift between the periods.")
+
     def split_trend(title, col, avgs, label_fmt, hover_fmt, tickformat, tickprefix="", zero=False, key=""):
         """Monthly line across both periods; each period in its own colour with a dashed line at its average."""
         fig = go.Figure()
@@ -364,6 +420,10 @@ with tab_cmp:
             _row("Ad spend (total)", ca["spend"], cb["spend"], change(cb["spend"], ca["spend"]), peso),
             _row("Ad spend (per month)", spm_a, spm_b, sc, peso),
             _row("Average frequency", ca["frequency"], cb["frequency"], g("frequency"), lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"),
+            _row("Cost per 1,000 impressions (CPM)", ua["cpm"], ub["cpm"], change(ub["cpm"], ua["cpm"]), lambda v: peso(v, 2)),
+            _row("Cost per post engagement", ua["cpe"], ub["cpe"], change(ub["cpe"], ua["cpe"]), lambda v: peso(v, 3)),
+            _row("Impressions per ₱1,000", ua["impr_per_k"], ub["impr_per_k"], change(ub["impr_per_k"], ua["impr_per_k"]), num),
+            _row("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], change(ub["eng_per_k"], ua["eng_per_k"]), num),
             _row("Facebook posts published", oa["posts"], ob["posts"], change(ob["posts"], oa["posts"]), num),
             _row("Facebook engagement rate", oa["er"], ob["er"], change(ob["er"], oa["er"]), lambda v: pct(v, 2)),
             _row("Facebook reach per post", oa["reach_per_post"], ob["reach_per_post"], change(ob["reach_per_post"], oa["reach_per_post"]), num)]
@@ -377,7 +437,7 @@ with tabs[0]:
     if pd.isna(reach_now) or pd.isna(cur["cpr"]):
         st.title(f"Brand Awareness, {RANGE}")
     else:
-        lead = f"Paid reach hit {short(reach_now)} in {RANGE}" if cur["months"] == 1 else f"Paid reach averaged {short(reach_now)} a month, {RANGE}"
+        lead = f"Facebook paid reach hit {short(reach_now)} in {RANGE}" if cur["months"] == 1 else f"Facebook paid reach averaged {short(reach_now)} a month, {RANGE}"
         st.title(f"{lead}, at {peso(cur['cpr'], 2)} per 1,000 reached.")
 
     parts = []

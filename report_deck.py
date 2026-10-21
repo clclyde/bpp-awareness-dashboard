@@ -116,7 +116,7 @@ def build_report(S: dict, month: str | None, internal: bool) -> dict:
     R["chg_org"] = {k: chg(org, org_p, k) for k in ("posts", "reach_per_post", "er", "views")}
     R["chg_tk"] = {k: chg(tk, tk_p, k) for k in ("videos", "views", "engagements", "eng_per_view")}
     # rule-based text, the same wording as the dashboard
-    R["headline"] = (f"Paid reach hit {short(cur['reach'])} in {R['label']}, at {peso(cur['cpr'], 2)} per 1,000 reached."
+    R["headline"] = (f"Facebook paid reach hit {short(cur['reach'])} in {R['label']}, at {peso(cur['cpr'], 2)} per 1,000 reached."
                      if not (pd.isna(cur["reach"]) or pd.isna(cur["cpr"])) else f"Brand awareness, {R['label']}")
     parts = []
     rc, cc = R["chg"]["reach"], R["chg"]["cpr"]

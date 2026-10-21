@@ -129,6 +129,36 @@ def prior_months(m0, m1):
     return m0 - n, m1 - n
 
 
+def unit_costs(ads, m0, m1) -> dict:
+    """Unit costs of the paid Facebook ads in the months m0..m1, and what each PHP 1,000 of spend bought.
+    Clicks and ThruPlays only exist in the exports from Mar 2026, so cost per click / per ThruPlay are only filled when every month of the range has them."""
+    d = _in(ads, m0, m1)
+    months = [m0 + i for i in range((m1 - m0).n + 1)]
+    spend, impr, reach, eng = d["spend"].sum(), d["impressions"].sum(), d["reach"].sum(), d["post_engagements"].sum()
+
+    def covered(col):
+        return all(d[(d["month"] == m) & d[col].notna()].shape[0] > 0 for m in months)
+
+    ck, tp = d[d["clicks_all"].notna()], d[d["thruplays"].notna()]
+    clicks_ok, tp_ok = covered("clicks_all"), covered("thruplays")
+    return {"spend": spend, "impressions": impr, "reach": reach, "engagements": eng,
+            "cpm": _div(spend * 1000, impr), "cpr1000": _div(spend * 1000, reach), "cpe": _div(spend, eng),
+            "cpc": _div(ck["spend"].sum(), ck["clicks_all"].sum()) if clicks_ok else float("nan"),
+            "cptp": _div(tp["spend"].sum(), tp["thruplays"].sum()) if tp_ok else float("nan"),
+            "impr_per_k": _div(impr * 1000, spend), "reach_per_k": _div(reach * 1000, spend), "eng_per_k": _div(eng * 1000, spend),
+            "clicks_ok": clicks_ok, "tp_ok": tp_ok}
+
+
+def unit_costs_by_objective(ads, m0, m1) -> pd.DataFrame:
+    """Same unit costs split by campaign type (reach, boosting, pagelikes, other): the blended figure also moves with the mix of campaigns."""
+    d = _in(ads, m0, m1)
+    rows = {}
+    for obj, g in d.groupby("objective"):
+        sp, im, re, en = g["spend"].sum(), g["impressions"].sum(), g["reach"].sum(), g["post_engagements"].sum()
+        rows[obj] = {"spend": sp, "cpm": _div(sp * 1000, im), "cpr1000": _div(sp * 1000, re), "cpe": _div(sp, en)}
+    return pd.DataFrame(rows).T
+
+
 def paid_monthly(ads) -> pd.DataFrame:
     g = pd.DataFrame({m: paid(ads, m, m) for m in sorted(ads["month"].unique())}).T
     return g[["spend", "impressions", "reach", "frequency", "cpr", "thru_rate", "campaigns"]].astype(float)

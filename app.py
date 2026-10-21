@@ -8,6 +8,7 @@ engagement rate = engagements / reach. Awareness is reported as delivery and cos
 Run:  cd bpp_dashboard && ../.venv/bin/streamlit run app.py     (reads Supabase via .streamlit/secrets.toml, or the local snapshot data/bpp_snapshot.json)
 """
 import hmac
+import importlib
 import os
 import time
 from pathlib import Path
@@ -17,6 +18,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import data as D
+
+# A long-running server (Streamlit Cloud) can keep an older data.py in memory after a deploy that changed only that file, and then fails with
+# AttributeError on a new function. Reload it whenever the file on disk is newer than the copy in memory.
+_dm = Path(D.__file__).stat().st_mtime
+if getattr(D, "_loaded_mtime", None) != _dm:
+    D = importlib.reload(D)
+    D._loaded_mtime = _dm
 
 st.set_page_config(page_title="BPP Brand Awareness Review", page_icon=":material/shield:", layout="wide")
 

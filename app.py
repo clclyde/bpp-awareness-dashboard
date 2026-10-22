@@ -274,6 +274,8 @@ with st.sidebar:
             "- **Cost per 1,000 reached**: ad spend / reach x 1,000\n"
             "- **Video view-through**: ThruPlays / impressions (Meta ThruPlay = 15 seconds or completion)\n"
             "- **Engagement rate**: engagements (reactions + comments + shares) / reach, for Facebook page posts\n"
+            "- **Unique people reached**: Meta's own count of different people the ads reached in a month (account-level report), averaged over the period; true frequency = impressions / unique reach\n"
+            "- **Click-through rate**: clicks (all) / impressions; **cost per click**: ad spend / clicks (all), both from Meta's account-level monthly totals\n"
             "- **TikTok**: views and engagement only (no reach in the SSOT), so engagement per view\n"
             "- **Not in the SSOT yet**: weekly reach, target audiences (share of audience), follower growth, brand health"
         )
@@ -540,7 +542,7 @@ with tab_cards:
     st.caption("Green means better for BPP, red means worse, grey means about the same (within 2%). Arrows show the direction: for costs, down is better. "
                "The small charts show each month, the first period in grey and the second in blue; hover for the values.")
 
-    HC = D.half_cards(ADS, POSTS, TT, KA0, KN)   # the same cards, in the same order, as the deck (report_deck.py --halves)
+    HC = D.half_cards(ADS, POSTS, TT, KA0, KN, S["acct"])   # the same cards, in the same order, as the deck (report_deck.py --halves)
     f2 = lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"
     pts = lambda v: f"{abs(v) * 100:.2f} pts"    # change of a rate, in percentage points
     KINDS = {"num": (num, signed(num), 0, "%{y:,.0f}"), "peso0": (peso, signed(peso), 0, "₱%{y:,.0f}"),

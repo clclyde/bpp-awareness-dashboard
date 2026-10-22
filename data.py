@@ -34,6 +34,9 @@ def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None) -> dict:
         ads[c] = pd.to_numeric(ads[c], errors="coerce")
     ads["month"] = pd.to_datetime(ads["start"]).dt.to_period("M")
     ads["objective"] = ads["name"].str.extract(r"^BPP_[A-Za-z]+_([A-Za-z]+)", expand=False).str.lower().fillna("other")
+    # level 'account' rows are Meta's own monthly totals for the whole ad account (unique reach per month): kept apart, they must never be summed with the campaign rows
+    acct = ads[ads["level"] == "account"][["month", "spend", "impressions", "reach", "clicks_all"]].reset_index(drop=True)
+    ads = ads[ads["level"] != "account"].reset_index(drop=True)
     for c in ["views", "reach", "engagements", "reactions", "comments", "shares", "clicks", "duration"]:
         posts[c] = pd.to_numeric(posts[c], errors="coerce")
     posts["published"] = pd.to_datetime(posts["published"])
@@ -45,7 +48,7 @@ def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None) -> dict:
     tt["posted"] = pd.to_datetime(tt["posted"])
     tt["month"] = tt["posted"].dt.to_period("M")
     tt["link"] = tt["link"].fillna("")
-    return {"ads": ads, "posts": posts, "tiktok": tt, "ref": {pd.Period(k, "M"): float(v) for k, v in ref.items()},
+    return {"ads": ads, "acct": acct, "posts": posts, "tiktok": tt, "ref": {pd.Period(k, "M"): float(v) for k, v in ref.items()},
             "ref_tt": {pd.Period(k, "M"): float(v) for k, v in (ref_tt or {}).items()}, "built_at": built_at, "source": source}
 
 
@@ -137,6 +140,15 @@ def prior_months(m0, m1):
     return m0 - n, m1 - n
 
 
+def account_period(acct, m0, m1) -> dict:
+    """Meta's account totals (all campaigns together) for the months m0..m1. Reach is unique people within each month, so the period figure is the monthly
+    average, and the frequency divides the impressions by the summed monthly reach (a month's reach cannot be added across months into one unique figure)."""
+    d = _in(acct, m0, m1)
+    n = d["month"].nunique()
+    sp, im, re, cl = d["spend"].sum(), d["impressions"].sum(), d["reach"].sum(), d["clicks_all"].sum()
+    return {"months": n, "spend": sp, "impressions": im, "clicks": cl, "reach_avg": _div(re, n), "frequency": _div(im, re), "ctr": _div(cl, im), "cpc": _div(sp, cl)}
+
+
 def unit_costs(ads, m0, m1) -> dict:
     """Unit costs of the paid Facebook ads in the months m0..m1, and what each PHP 1,000 of spend bought.
     Clicks and ThruPlays only exist in the exports from Mar 2026, so cost per click / per ThruPlay are only filled when every month of the range has them."""
@@ -159,13 +171,15 @@ def unit_costs(ads, m0, m1) -> dict:
             "clicks_ok": clicks_ok, "tp_ok": tp_ok}
 
 
-def half_cards(ads, posts, tt, a0, n) -> dict:
+def half_cards(ads, posts, tt, a0, n, acct=None) -> dict:
     """The KPI cards of the half vs half comparison: the first n months from a0 against the next n months.
     Used by the dashboard's KPI Cards tab and by the deck (report_deck.py --halves), so both show the same cards in the same order.
     Groups run from the strongest results to the context (agreed 2026-10-21, the report makes the case for renewing); each group is a list of rows.
     Card keys: label, a (first period), b (second period), better (True higher is better, False lower is better, None neither),
     kind (formatting: num, peso0, peso2, peso3, rate, freq), hint, series (monthly values over both periods, for a sparkline), compared
-    and paid_series (the series comes from the Ads Manager exports, so incomplete-export months can be marked)."""
+    and paid_series (the series comes from the Ads Manager exports, so incomplete-export months can be marked).
+    acct = Meta's account-level monthly totals (S["acct"]): they add unique reach per month, true frequency, click-through rate and cost per click, and only
+    appear when every month of both periods has an account row."""
     a1, b0, b1 = a0 + (n - 1), a0 + n, a0 + (2 * n - 1)
     months = [a0 + i for i in range(2 * n)]
     ca, cb = paid(ads, a0, a1), paid(ads, b0, b1)
@@ -178,15 +192,25 @@ def half_cards(ads, posts, tt, a0, n) -> dict:
         return {"label": label, "a": a, "b": b, "better": better, "kind": kind, "hint": hint, "compared": compared, "paid_series": paid_series,
                 "series": None if series is None else [series(m) for m in months]}
 
-    clicks = [card("Click-through rate (CTR)", ua["ctr"], ub["ctr"], True, "rate", "clicks / impressions"),
-              card("Cost per click", ua["cpc"], ub["cpc"], False, "peso2", "lower is better")] if (ua["clicks_ok"] and ub["clicks_ok"]) else []
+    acct_ok = acct is not None and len(acct) > 0 and all(m in set(acct["month"]) for m in months)
+    if acct_ok:    # Meta's account totals cover every month, so clicks need no campaign data
+        xa, xb = account_period(acct, a0, a1), account_period(acct, b0, b1)
+        unique = [card("Unique people reached per month", xa["reach_avg"], xb["reach_avg"], True, "num", "Facebook ads, each person counted once a month",
+                       series=lambda m: account_period(acct, m, m)["reach_avg"])]
+        true_freq = [card("True frequency", xa["frequency"], xb["frequency"], None, "freq", "impressions / unique reach")]
+        clicks = [card("Click-through rate (CTR)", xa["ctr"], xb["ctr"], True, "rate", "clicks / impressions"),
+                  card("Cost per click", xa["cpc"], xb["cpc"], False, "peso2", "lower is better")]
+    else:          # campaign exports only have clicks from Mar 2026
+        unique, true_freq = [], []
+        clicks = [card("Click-through rate (CTR)", ua["ctr"], ub["ctr"], True, "rate", "clicks / impressions"),
+                  card("Cost per click", ua["cpc"], ub["cpc"], False, "peso2", "lower is better")] if (ua["clicks_ok"] and ub["clicks_ok"]) else []
     groups = [
         ("Audience Growth", [
             [card("Average reach per Facebook post", oa["reach_per_post"], ob["reach_per_post"], True, "num", series=lambda m: organic(posts, m, m)["reach_per_post"]),
              card("Facebook post views", oa["views"], ob["views"], True, "num", series=lambda m: organic(posts, m, m)["views"]),
              card("TikTok video views", ta["views"], tb["views"], True, "num", series=lambda m: tiktok(tt, m, m)["views"], compared=tt_ok)],
-            [card("Paid reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads"),
-             card("TikTok engagement per view", ta["eng_per_view"], tb["eng_per_view"], True, "rate", "likes, comments, shares / views", compared=tt_ok)]]),
+            [card("Paid reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads")] + unique
+            + [card("TikTok engagement per view", ta["eng_per_view"], tb["eng_per_view"], True, "rate", "likes, comments, shares / views", compared=tt_ok)]]),
         ("More From Every Peso Spent", [
             [card("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], True, "num", "higher is better", series=lambda m: unit_costs(ads, m, m)["eng_per_k"], paid_series=True),
              card("Cost per engagement", ua["cpe"], ub["cpe"], False, "peso3", "lower is better", series=lambda m: unit_costs(ads, m, m)["cpe"], paid_series=True),
@@ -197,12 +221,12 @@ def half_cards(ads, posts, tt, a0, n) -> dict:
             [card("Ad spend per month", ca["spend"] / n, cb["spend"] / n, None, "peso0", "Facebook ads"),
              card("Cost per 1,000 reached", ua["cpr1000"], ub["cpr1000"], False, "peso2", "lower is better"),
              card("Reach per ₱1,000", ua["reach_per_k"], ub["reach_per_k"], True, "num", "higher is better"),
-             card("Average frequency", ca["frequency"], cb["frequency"], None, "freq", "impressions / reach")],
+             card("Average frequency", ca["frequency"], cb["frequency"], None, "freq", "impressions / reach")] + true_freq,
             [card("Facebook posts published", oa["posts"], ob["posts"], True, "num"),
              card("TikTok videos posted", ta["videos"], tb["videos"], True, "num", compared=tt_ok),
              card("Facebook engagement rate", oa["er"], ob["er"], True, "rate", "engagements / reach")]]),
     ]
-    return {"a": (a0, a1), "b": (b0, b1), "months": months, "groups": groups, "clicks_ok": ua["clicks_ok"] and ub["clicks_ok"], "tt_ok": tt_ok}
+    return {"a": (a0, a1), "b": (b0, b1), "months": months, "groups": groups, "clicks_ok": acct_ok or (ua["clicks_ok"] and ub["clicks_ok"]), "tt_ok": tt_ok}
 
 
 def unit_costs_by_objective(ads, m0, m1) -> pd.DataFrame:

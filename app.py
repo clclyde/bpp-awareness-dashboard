@@ -333,6 +333,19 @@ with tab_cmp:
     ta, tb = D.tiktok(TT, A0, A1), D.tiktok(TT, B0, B1)
     ua, ub = D.unit_costs(ADS, A0, A1), D.unit_costs(ADS, B0, B1)
     spm_a, spm_b = ca["spend"] / N, cb["spend"] / N                      # spend per month
+    # Meta's account totals (unique reach, clicks) and the page follows: used only when every month of both periods has them
+    _cm = [A0 + i for i in range(2 * N)]
+    ACCT_OK = len(S["acct"]) > 0 and all(m in set(S["acct"]["month"]) for m in _cm)
+    FOL_OK = len(S["follows"]) > 0 and all(m in set(S["follows"]["month"]) for m in _cm)
+    if ACCT_OK:
+        xa, xb = D.account_period(S["acct"], A0, A1), D.account_period(S["acct"], B0, B1)
+        ua.update(ctr=xa["ctr"], cpc=xa["cpc"], clicks_ok=True)          # clicks of every month, so no campaign data is needed
+        ub.update(ctr=xb["ctr"], cpc=xb["cpc"], clicks_ok=True)
+        _am = S["acct"].set_index("month")
+    if FOL_OK:
+        _fm = dict(zip(S["follows"]["month"], S["follows"]["follows"].astype(float)))
+        fol_a, fol_b = sum(_fm[m] for m in _cm[:N]), sum(_fm[m] for m in _cm[N:])
+        ua["fol_per_k"], ub["fol_per_k"] = fol_a * 1000 / ca["spend"], fol_b * 1000 / cb["spend"]
     g = lambda k, a=ca, b=cb: change(b[k], a[k])
     rc, cc, sc = g("reach_avg"), g("cpr"), change(spm_b, spm_a)
     rp, pv, er = change(ob["reach_per_post"], oa["reach_per_post"]), change(ob["views"], oa["views"]), change(ob["er"], oa["er"])
@@ -341,13 +354,17 @@ with tab_cmp:
     if None not in (rp, pv, er):
         intro.append(f"On the Facebook page, reach per post {mv(rp)} ({num(oa['reach_per_post'])} to {num(ob['reach_per_post'])}) and post views {mv(pv)}"
                      f"{', while' if (er < 0) != (min(rp, pv) < 0) else ', and'} the engagement rate {mv(er)} ({pct(oa['er'], 2)} to {pct(ob['er'], 2)}).")
+    if FOL_OK and change(fol_b, fol_a) is not None:
+        _fc = change(fol_b, fol_a)
+        intro.append(f"New page follows {'rose' if _fc >= 0 else 'fell'} **{abs(_fc):.0%}** ({num(fol_a)} to {num(fol_b)}, before unfollows).")
     ce, ek = change(ub["cpe"], ua["cpe"]), change(ub["eng_per_k"], ua["eng_per_k"])
     if ce is not None and ek is not None:
         intro.append(("Each peso of ad spend bought more: " if ce < 0 and ek > 0 else "Per peso of ad spend, ")
                      + f"cost per engagement went {'down' if ce <= 0 else 'up'} **{abs(ce):.1%}** ({peso(ua['cpe'], 3)} to {peso(ub['cpe'], 3)}) "
                      f"and engagements per ₱1,000 {'rose' if ek >= 0 else 'fell'} **{abs(ek):.1%}** ({num(ua['eng_per_k'])} to {num(ub['eng_per_k'])}).")
     if rc is not None and cc is not None:
-        intro.append(f"In Facebook paid awareness, reach per month {'grew' if rc >= 0 else 'fell'} **{abs(rc):.1%}**, from {short(ca['reach_avg'])} to {short(cb['reach_avg'])}. "
+        _rf = short if short(ca["reach_avg"]) != short(cb["reach_avg"]) else num    # "1.0 million to 1.0 million" says nothing, so use the full numbers
+        intro.append(f"In Facebook paid awareness, reach per month {'grew' if rc >= 0 else 'fell'} **{abs(rc):.1%}**, from {_rf(ca['reach_avg'])} to {_rf(cb['reach_avg'])}. "
                      f"Cost per 1,000 reached went {'down' if cc <= 0 else 'up'} **{abs(cc):.1%}**, from {peso(ca['cpr'], 2)} to {peso(cb['cpr'], 2)}"
                      + (f", and monthly Facebook ad spend {'dropped' if sc < 0 else 'rose'} {abs(sc):.1%} ({peso(spm_a)} to {peso(spm_b)})." if sc is not None else "."))
     if intro:
@@ -369,36 +386,36 @@ with tab_cmp:
         got = _cov(m0, n_)
         return None if len(got) == n_ else (", ".join(mlabel(m) for m in got) + f" only ({len(got)} of {n_} months)" if got else "no months with data")
     fl, fr = st.columns(2, gap="large", border=True)
+    _pa, _pb = tt_partial(A0, N), tt_partial(B0, N)
+    # one list for both halves: (label, first-period value, next-period value, change, help, caption under the first, caption under the next)
+    _items = []
+    if FOL_OK:
+        _items.append(("New page follows", num(fol_a), num(fol_b), change(fol_b, fol_a), "New follows of the Facebook page (Meta Business Suite), before unfollows. Higher is better.", None, None))
+    _items += [("Average reach per post", num(oa["reach_per_post"]), num(ob["reach_per_post"]), change(ob["reach_per_post"], oa["reach_per_post"]), None, None, None),
+               ("Post views", num(oa["views"]), num(ob["views"]), change(ob["views"], oa["views"]), None, None, None),
+               ("TikTok video views" + (" (partial)" if _pa else ""), num(ta["views"]) if _cov(A0, N) else "n/a", num(tb["views"]) if _cov(B0, N) else "n/a",
+                change(tb["views"], ta["views"]) if TT_OK else None,
+                None if not _pa else "The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in TT_GAPS if A0 <= m <= A1) + ", so this total is not the whole period.",
+                None if not _pa else ("TikTok video views: no data for this period." if _pa == "no months with data" else f"TikTok video views cover {_pa}."),
+                None if not _pb else ("TikTok video views: no data for this period." if _pb == "no months with data" else f"TikTok video views cover {_pb}.")),   # says outright that it is the TikTok views figure, not the whole box
+               ("Posts published", num(oa["posts"]), num(ob["posts"]), change(ob["posts"], oa["posts"]), None, None, None),
+               ("Engagement rate", pct(oa["er"], 2), pct(ob["er"], 2), change(ob["er"], oa["er"]), None, None, None)]
     with fl:
         st.markdown(f"**{A_TITLE}** · {A_RNG}")
-        f1, f2 = st.columns(2)
-        f1.metric("Average reach per post", num(oa["reach_per_post"]))
-        f2.metric("Post views", num(oa["views"]))
-        f1, f2 = st.columns(2)
-        _pa = tt_partial(A0, N)
-        with f1:
-            st.metric("TikTok video views" + (" (partial)" if _pa else ""), num(ta["views"]) if _cov(A0, N) else "n/a",
-                      help=None if not _pa else "The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in TT_GAPS if A0 <= m <= A1) + ", so this total is not the whole period.")
-            if _pa:   # says outright that it is the TikTok views figure, not the whole box
-                st.caption("TikTok video views: no data for this period." if _pa == "no months with data" else f"TikTok video views cover {_pa}.")
-        f2.metric("Posts published", num(oa["posts"]))
-        st.metric("Engagement rate", pct(oa["er"], 2))
+        for k in range(0, len(_items), 2):
+            for col, (lab, va_, vb_, ch_, hp_, ca_, cb_) in zip(st.columns(2), _items[k:k + 2]):
+                with col:
+                    st.metric(lab, va_, help=hp_)
+                    if ca_:
+                        st.caption(ca_)
     with fr:
         st.markdown(f"**{B_TITLE}** · {B_RNG}")
-        f1, f2 = st.columns(2)
-        with f1:
-            metric("Average reach per post", num(ob["reach_per_post"]), change(ob["reach_per_post"], oa["reach_per_post"]), True, vs=A_NAME.lower())
-        with f2:
-            metric("Post views", num(ob["views"]), change(ob["views"], oa["views"]), True, vs=A_NAME.lower())
-        f1, f2 = st.columns(2)
-        _pb = tt_partial(B0, N)
-        with f1:
-            metric("TikTok video views" + (" (partial)" if _pb else ""), num(tb["views"]) if _cov(B0, N) else "n/a", change(tb["views"], ta["views"]) if TT_OK else None, True, vs=A_NAME.lower())
-            if _pb:   # says outright that it is the TikTok views figure, not the whole box
-                st.caption("TikTok video views: no data for this period." if _pb == "no months with data" else f"TikTok video views cover {_pb}.")
-        with f2:
-            metric("Posts published", num(ob["posts"]), change(ob["posts"], oa["posts"]), True, vs=A_NAME.lower())
-        metric("Engagement rate", pct(ob["er"], 2), change(ob["er"], oa["er"]), True, vs=A_NAME.lower())
+        for k in range(0, len(_items), 2):
+            for col, (lab, va_, vb_, ch_, hp_, ca_, cb_) in zip(st.columns(2), _items[k:k + 2]):
+                with col:
+                    metric(lab, vb_, ch_, True, vs=A_NAME.lower())
+                    if cb_:
+                        st.caption(cb_)
     if INTERNAL and not TT_OK:   # internal view only: the client sees the "(partial)" label and the months it covers
         st.caption(f"The SSOT has no TikTok videos for {', '.join(mlabel(m) for m in TT_GAPS)}. The first period's TikTok total covers only the months that have data, so it is not compared with the second period (no change shown).")
 
@@ -413,7 +430,8 @@ with tab_cmp:
         _cost_rows.append(("Cost per click", "cpc", 2, "Ad spend / clicks (all). Lower is better."))
     if ua["tp_ok"] and ub["tp_ok"]:
         _cost_rows.append(("Cost per ThruPlay", "cptp", 3, "Video ad spend / ThruPlays (15 seconds or completion). Lower is better."))
-    _out_rows = [("Engagements per ₱1,000", "eng_per_k", "Post engagements for every ₱1,000 of ad spend. Higher is better."),
+    _out_rows = ([("New follows per ₱1,000", "fol_per_k", "All new follows of the Facebook page (before unfollows) for every ₱1,000 of Facebook ad spend. Higher is better.")] if FOL_OK else []) + [
+                 ("Engagements per ₱1,000", "eng_per_k", "Post engagements for every ₱1,000 of ad spend. Higher is better."),
                  ("Impressions per ₱1,000", "impr_per_k", "Impressions delivered for every ₱1,000 of ad spend. Higher is better."),
                  ("Reach per ₱1,000", "reach_per_k", "Reach for every ₱1,000 of ad spend. Higher is better.")]
     ef = st.container(border=True)                                       # one row per figure, like the paid box above, so each pair sits level
@@ -432,12 +450,13 @@ with tab_cmp:
     ef.caption("What each ₱1,000 of spend bought (higher is better)")
     for label, k, hp in _out_rows:
         ml, mr = ef.columns(2, gap="large")
+        _f = (lambda v: f"{v:,.1f}") if k == "fol_per_k" else num
         with ml:
-            metric(label, num(ua[k]), None, True, help=hp, baseline=True)
+            metric(label, _f(ua[k]), None, True, help=hp, baseline=True)
         with mr:
-            metric(label, num(ub[k]), change(ub[k], ua[k]), True, help=hp, vs=_vs_ef)
+            metric(label, _f(ub[k]), change(ub[k], ua[k]), True, help=hp, vs=_vs_ef)
     if not (ua["clicks_ok"] and ub["clicks_ok"]):
-        st.caption("Cost per click and cost per ThruPlay appear when both periods are from Mar 2026 onward; earlier data does not include clicks or ThruPlays.")
+        st.caption("Cost per click appears when every month of both periods has Meta's account-level totals, and cost per ThruPlay when both periods are from Mar 2026 onward; earlier data does not include ThruPlays.")
     with st.expander("Unit costs by campaign type", icon=":material/stacked_bar_chart:"):
         st.markdown("Reach, boosting (engagement and video views) and page-like campaigns have very different costs, so the blended figures above also move with the mix of campaigns. Compare like with like here.")
         oa_, ob_ = D.unit_costs_by_objective(ADS, A0, A1), D.unit_costs_by_objective(ADS, B0, B1)
@@ -468,13 +487,22 @@ with tab_cmp:
     hr.caption(B_RNG)
     fa = lambda c: f"{c['frequency']:.2f}" if not pd.isna(c["frequency"]) else "n/a"
     er_m = lambda ser: [D.unit_costs(ADS, m, m)["er_impr"] for m in ser.index]   # monthly ad engagement rate, for the sparkline
-    for label, va, vb, ch, better, sera, serb, hp in (
-            ("Reach (monthly average)", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, True, sa["reach"], sb["reach"], None),
-            ("Ad engagement rate", pct(ua["er_impr"], 2), pct(ub["er_impr"], 2), change(ub["er_impr"], ua["er_impr"]), True, er_m(sa), er_m(sb),
-             "Post engagements / impressions of the Facebook ads. Higher is better."),
-            ("Cost per 1,000 reached", peso(ca["cpr"], 2), peso(cb["cpr"], 2), cc, False, sa["cpr"], sb["cpr"], "Ad spend / reach x 1,000. Lower is better."),
-            ("Ad spend (per month)", peso(spm_a), peso(spm_b), sc, None, sa["spend"], sb["spend"], "Ads Manager, ex-VAT."),
-            ("Average frequency", fa(ca), fa(cb), g("frequency"), False, sa["frequency"], sb["frequency"], "Impressions / reach over the month.")):
+    _paid_rows = [("Reach (monthly average)", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, True, sa["reach"], sb["reach"], "Sum of the campaign reach rows, so people who saw several campaigns are counted more than once."),
+                  ("Ad engagement rate", pct(ua["er_impr"], 2), pct(ub["er_impr"], 2), change(ub["er_impr"], ua["er_impr"]), True, er_m(sa), er_m(sb),
+                   "Post engagements / impressions of the Facebook ads. Higher is better."),
+                  ("Cost per 1,000 reached", peso(ca["cpr"], 2), peso(cb["cpr"], 2), cc, False, sa["cpr"], sb["cpr"], "Ad spend / reach x 1,000. Lower is better."),
+                  ("Ad spend (per month)", peso(spm_a), peso(spm_b), sc, None, sa["spend"], sb["spend"], "Ads Manager, ex-VAT."),
+                  ("Average frequency", fa(ca), fa(cb), g("frequency"), False, sa["frequency"], sb["frequency"], "Impressions / reach over the month.")]
+    if ACCT_OK:     # Meta's account-level totals: each person counted once a month, clicks for every month
+        _mser = lambda ser, fn: [fn(_am.loc[m]) for m in ser.index]
+        _paid_rows[1:1] = [("Unique people reached (monthly average)", num(xa["reach_avg"]), num(xb["reach_avg"]), change(xb["reach_avg"], xa["reach_avg"]), True,
+                            _mser(sa, lambda r: r["reach"]), _mser(sb, lambda r: r["reach"]),
+                            "Meta's own count of different people the ads reached in a month (account-level report), averaged over the period. Higher is better.")]
+        _paid_rows.insert(3, ("Click-through rate", pct(xa["ctr"], 2), pct(xb["ctr"], 2), change(xb["ctr"], xa["ctr"]), True,
+                              _mser(sa, lambda r: r["clicks_all"] / r["impressions"]), _mser(sb, lambda r: r["clicks_all"] / r["impressions"]), "Clicks (all) / impressions. Higher is better."))
+        _paid_rows.append(("True frequency", f"{xa['frequency']:.2f}", f"{xb['frequency']:.2f}", change(xb["frequency"], xa["frequency"]), None,
+                           _mser(sa, lambda r: r["impressions"] / r["reach"]), _mser(sb, lambda r: r["impressions"] / r["reach"]), "Impressions / unique reach over the month."))
+    for label, va, vb, ch, better, sera, serb, hp in _paid_rows:
         ml, mr = box.columns(2, gap="large")
         with ml:
             metric(label, va, None, better, sera, hp, baseline=True)
@@ -504,7 +532,8 @@ with tab_cmp:
 
     def _row(label, a, b, chg_, fmt):
         return {"Metric": label, A_NAME + " (" + A_RNG + ")": fmt(a), B_NAME + " (" + B_RNG + ")": fmt(b), "Change": pct(chg_, 1, True) if chg_ is not None else "n/a"}
-    rows = [_row("Facebook reach per post", oa["reach_per_post"], ob["reach_per_post"], change(ob["reach_per_post"], oa["reach_per_post"]), num),
+    rows = ([_row("New page follows (before unfollows)", fol_a, fol_b, change(fol_b, fol_a), num)] if FOL_OK else []) + [
+            _row("Facebook reach per post", oa["reach_per_post"], ob["reach_per_post"], change(ob["reach_per_post"], oa["reach_per_post"]), num),
             _row("Facebook post views", oa["views"], ob["views"], change(ob["views"], oa["views"]), num),
             _row("TikTok video views", ta["views"], tb["views"], change(tb["views"], ta["views"]) if TT_OK else None, num),
             _row("Facebook posts published", oa["posts"], ob["posts"], change(ob["posts"], oa["posts"]), num),
@@ -519,6 +548,13 @@ with tab_cmp:
             _row("Ad spend (total)", ca["spend"], cb["spend"], change(cb["spend"], ca["spend"]), peso),
             _row("Ad spend (per month)", spm_a, spm_b, sc, peso),
             _row("Average frequency", ca["frequency"], cb["frequency"], g("frequency"), lambda v: "n/a" if pd.isna(v) else f"{v:.2f}")]
+    if FOL_OK:
+        rows.insert(9, _row("New follows per ₱1,000", ua["fol_per_k"], ub["fol_per_k"], change(ub["fol_per_k"], ua["fol_per_k"]), lambda v: f"{v:,.1f}"))
+    if ACCT_OK:
+        rows += [_row("Unique people reached (monthly average)", xa["reach_avg"], xb["reach_avg"], change(xb["reach_avg"], xa["reach_avg"]), num),
+                 _row("True frequency", xa["frequency"], xb["frequency"], change(xb["frequency"], xa["frequency"]), lambda v: f"{v:.2f}"),
+                 _row("Click-through rate", xa["ctr"], xb["ctr"], change(xb["ctr"], xa["ctr"]), lambda v: pct(v, 2)),
+                 _row("Cost per click", xa["cpc"], xb["cpc"], change(xb["cpc"], xa["cpc"]), lambda v: peso(v, 2))]
     with st.expander("All figures side by side", icon=":material/table:"):
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     st.caption("Change is the second period against the first. For cost per 1,000 reached and frequency, lower is better. Awareness is reported as delivery and cost: reach measures exposure, not recall.")
@@ -542,12 +578,13 @@ with tab_cards:
     st.caption("Green means better for BPP, red means worse, grey means about the same (within 2%). Arrows show the direction: for costs, down is better. "
                "The small charts show each month, the first period in grey and the second in blue; hover for the values.")
 
-    HC = D.half_cards(ADS, POSTS, TT, KA0, KN, S["acct"])   # the same cards, in the same order, as the deck (report_deck.py --halves)
+    HC = D.half_cards(ADS, POSTS, TT, KA0, KN, S["acct"], S["follows"])   # the same cards, in the same order, as the deck (report_deck.py --halves)
     f2 = lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"
     pts = lambda v: f"{abs(v) * 100:.2f} pts"    # change of a rate, in percentage points
     KINDS = {"num": (num, signed(num), 0, "%{y:,.0f}"), "peso0": (peso, signed(peso), 0, "₱%{y:,.0f}"),
              "peso2": (lambda v: peso(v, 2), signed(lambda v: peso(v, 2)), 2, "₱%{y:,.2f}"), "peso3": (lambda v: peso(v, 3), signed(lambda v: peso(v, 3)), 3, "₱%{y:,.3f}"),
-             "rate": (lambda v: pct(v, 2), signed(pts), 4, "%{y:.2%}"), "freq": (f2, signed(f2), 2, "%{y:.2f}")}
+             "rate": (lambda v: pct(v, 2), signed(pts), 4, "%{y:.2%}"), "freq": (f2, signed(f2), 2, "%{y:.2f}"),
+             "num1": (lambda v: f"{v:,.1f}", signed(lambda v: f"{v:,.1f}"), 1, "%{y:,.1f}")}
     for title, rows_ in HC["groups"]:
         st.subheader(title)
         for row in rows_:
@@ -558,6 +595,13 @@ with tab_cards:
                              note=None if c["compared"] else "Not compared: the data does not cover every month of both periods",
                              series=(KMONTHS, c["series"], hover) if c["series"] is not None else None,
                              flags=GAPS if (INTERNAL and c["paid_series"]) else None, key="kc_" + c["label"])
+        if title == "Audience Growth" and "followers_lifetime" in S["page"]:
+            st.caption(f"Over the whole period (Sep 2025 to Sep 2026) the page gained {S['page'].get('net_follows', float('nan')):,.0f} net followers and has {S['page']['followers_lifetime']:,.0f} followers in total "
+                       "(Meta Business Suite). The new-follows cards count follows before unfollows.")
+            if INTERNAL:
+                _csv, _screen = S["follows"]["follows"].sum(), S["page"].get("net_follows", 0) + S["page"].get("unfollows", 0)
+                st.caption(f"Internal: unfollows are only known for the whole period ({S['page'].get('unfollows', float('nan')):,.0f}), so net new followers and follower growth per period cannot be computed. "
+                           f"The daily follows add up to {_csv:,.0f}, while Business Suite's totals imply {_screen:,.0f} follows (unexplained).")
         if title == "More From Every Peso Spent" and INTERNAL and not HC["clicks_ok"]:
             st.caption("Internal: click-through rate and cost per click need clicks for every month of both periods. The SSOT exports have clicks only from Mar 2026, "
                        "so these cards appear once the monthly campaign reports with clicks are loaded.")

@@ -4,7 +4,7 @@ The app reads Supabase only, with the read-only `pulse_reader_bpp` login that ca
 
 ## 1. Supabase (once). The SQL files live in the parent project's git-ignored `supabase/` folder
 Run these in the Supabase SQL Editor, in this order:
-1. `20_social_tables.sql`: creates `social_ads_monthly`, `fb_posts`, `tiktok_videos` (generic, with `account_code`).
+1. `20_social_tables.sql`: creates `social_ads_monthly`, `fb_posts`, `tiktok_videos`, `fb_page_metrics` (generic, with `account_code`). An install that already ran an older version of this file gets `fb_page_metrics` and its read access from `22_seed_bpp.sql`.
 2. `21_bpp_reader_role.sql.template`: first generate a password in a normal Terminal (`openssl rand -hex 16`, never in a chat), replace `<PASSWORD>` in the one marked place, run, then close the tab and delete that entry from the query history. Every row of the check table at the end must be `true`.
 3. `22_seed_bpp.sql`: loads the BPP data (229 ad rows, 153 Facebook posts, 87 TikTok videos). It ends with a count table.
 

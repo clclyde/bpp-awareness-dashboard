@@ -27,7 +27,7 @@ def snapshot_exists() -> bool:
     return SNAPSHOT.exists()
 
 
-def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None) -> dict:
+def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None, page=None) -> dict:
     """Same typing and derived columns whether the rows come from Supabase or from the snapshot."""
     ads, posts, tt = ads.copy(), posts.copy(), tt.copy()
     for c in ["spend", "impressions", "reach", "thruplays", "post_engagements", "shares", "reactions", "saves", "comments", "fb_likes", "clicks_all"]:
@@ -48,7 +48,14 @@ def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None) -> dict:
     tt["posted"] = pd.to_datetime(tt["posted"])
     tt["month"] = tt["posted"].dt.to_period("M")
     tt["link"] = tt["link"].fillna("")
-    return {"ads": ads, "acct": acct, "posts": posts, "tiktok": tt, "ref": {pd.Period(k, "M"): float(v) for k, v in ref.items()},
+    # Facebook page figures from Business Suite (long format): follows per month, and whole-period totals that cannot be split by month
+    page = pd.DataFrame(columns=["metric", "start", "end", "value"]) if page is None else page.copy()
+    page["value"] = pd.to_numeric(page["value"], errors="coerce")
+    follows = page[page["metric"] == "follows_month"].copy()
+    follows["month"] = pd.to_datetime(follows["start"]).dt.to_period("M")
+    follows = follows.rename(columns={"value": "follows"})[["month", "follows"]].sort_values("month").reset_index(drop=True)
+    page_ctx = {r.metric: float(r.value) for r in page[page["metric"].isin(["followers_lifetime", "net_follows", "unfollows"])].itertuples()}
+    return {"ads": ads, "acct": acct, "follows": follows, "page": page_ctx, "posts": posts, "tiktok": tt, "ref": {pd.Period(k, "M"): float(v) for k, v in ref.items()},
             "ref_tt": {pd.Period(k, "M"): float(v) for k, v in (ref_tt or {}).items()}, "built_at": built_at, "source": source}
 
 
@@ -56,7 +63,7 @@ def load_snapshot(path: Path = SNAPSHOT) -> dict:
     raw = json.loads(Path(path).read_text())
     built = pd.Timestamp(raw["built_at"]).tz_convert(None)
     return _prepare(pd.DataFrame(raw["ads"]), pd.DataFrame(raw["posts"]), pd.DataFrame(raw["tiktok"]), {**raw.get("ad_spend_report", {}), **raw.get("ad_spend_fb_csm", {})}, built,
-                    f"BPP Content SSOT snapshot ({built:%d %b %Y})", raw.get("tiktok_ad_spend", {}))
+                    f"BPP Content SSOT snapshot ({built:%d %b %Y})", raw.get("tiktok_ad_spend", {}), pd.DataFrame(raw.get("page_metrics", [])))
 
 
 SQL = {
@@ -66,6 +73,7 @@ SQL = {
              "from pulse.fb_posts where account_code = 'BPP'",
     "tiktok": "select title, link, posted, views, likes, comments, shares, engagement from pulse.tiktok_videos where account_code = 'BPP'",
     # Facebook spend reference: the Ad Spend Report Summary, replaced by Campaign Spend Monitoring for the months where the Summary figure includes VAT
+    "page": 'select metric, period_start as "start", period_end as "end", value from pulse.fb_page_metrics where account_code = \'BPP\'',
     "ref": "select month_start, spend_php, source_tab from pulse.ad_spend_monthly where account_code = 'BPP' and client_code = 'BPP-FB' "
            "and source_tab in ('Summary', 'Campaign Spend Monitoring')",
     # TikTok ad spend, ex-VAT: the Campaign Spend Monitoring sheet (2026), the SSOT TikTok tabs (Aug and Oct 2025) and the Ad Spend Report 2025 Summary (Sep, Nov and Dec 2025).
@@ -96,7 +104,7 @@ def load_db(conf: dict) -> dict:
     rows = sorted(raw["ref"].itertuples(), key=lambda r: r.source_tab == "Campaign Spend Monitoring")   # Campaign Spend Monitoring wins
     ref = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in rows}
     ref_tt = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in raw["ref_tt"].itertuples()}
-    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), "Supabase (live)", ref_tt)
+    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), "Supabase (live)", ref_tt, raw["page"])
 
 
 def load(conf: dict | None = None) -> dict:
@@ -171,7 +179,7 @@ def unit_costs(ads, m0, m1) -> dict:
             "clicks_ok": clicks_ok, "tp_ok": tp_ok}
 
 
-def half_cards(ads, posts, tt, a0, n, acct=None) -> dict:
+def half_cards(ads, posts, tt, a0, n, acct=None, follows=None) -> dict:
     """The KPI cards of the half vs half comparison: the first n months from a0 against the next n months.
     Used by the dashboard's KPI Cards tab and by the deck (report_deck.py --halves), so both show the same cards in the same order.
     Groups run from the strongest results to the context (agreed 2026-10-21, the report makes the case for renewing); each group is a list of rows.
@@ -179,7 +187,9 @@ def half_cards(ads, posts, tt, a0, n, acct=None) -> dict:
     kind (formatting: num, peso0, peso2, peso3, rate, freq), hint, series (monthly values over both periods, for a sparkline), compared
     and paid_series (the series comes from the Ads Manager exports, so incomplete-export months can be marked).
     acct = Meta's account-level monthly totals (S["acct"]): they add unique reach per month, true frequency, click-through rate and cost per click, and only
-    appear when every month of both periods has an account row."""
+    appear when every month of both periods has an account row.
+    follows = new Facebook page follows per month (S["follows"], Business Suite, before unfollows): they add new follows and new follows per 1,000 of ad spend when every
+    month of both periods has a figure. Net new followers need unfollows per month, which are not available, so they are not computed."""
     a1, b0, b1 = a0 + (n - 1), a0 + n, a0 + (2 * n - 1)
     months = [a0 + i for i in range(2 * n)]
     ca, cb = paid(ads, a0, a1), paid(ads, b0, b1)
@@ -192,6 +202,14 @@ def half_cards(ads, posts, tt, a0, n, acct=None) -> dict:
         return {"label": label, "a": a, "b": b, "better": better, "kind": kind, "hint": hint, "compared": compared, "paid_series": paid_series,
                 "series": None if series is None else [series(m) for m in months]}
 
+    fol_ok = follows is not None and len(follows) > 0 and all(m in set(follows["month"]) for m in months)
+    if fol_ok:
+        fm = dict(zip(follows["month"], follows["follows"].astype(float)))
+        fa, fb = sum(fm[m] for m in months[:n]), sum(fm[m] for m in months[n:])
+        new_follows = [card("New Facebook follows", fa, fb, True, "num", "new follows before unfollows", series=lambda m: fm[m])]
+        follows_per_k = [card("New follows per ₱1,000", _div(fa * 1000, ca["spend"]), _div(fb * 1000, cb["spend"]), True, "num1", "all new follows / Facebook ad spend")]
+    else:
+        new_follows, follows_per_k = [], []
     acct_ok = acct is not None and len(acct) > 0 and all(m in set(acct["month"]) for m in months)
     if acct_ok:    # Meta's account totals cover every month, so clicks need no campaign data
         xa, xb = account_period(acct, a0, a1), account_period(acct, b0, b1)
@@ -206,7 +224,7 @@ def half_cards(ads, posts, tt, a0, n, acct=None) -> dict:
                   card("Cost per click", ua["cpc"], ub["cpc"], False, "peso2", "lower is better")] if (ua["clicks_ok"] and ub["clicks_ok"]) else []
     groups = [
         ("Audience Growth", [
-            [card("Average reach per Facebook post", oa["reach_per_post"], ob["reach_per_post"], True, "num", series=lambda m: organic(posts, m, m)["reach_per_post"]),
+            new_follows + [card("Average reach per Facebook post", oa["reach_per_post"], ob["reach_per_post"], True, "num", series=lambda m: organic(posts, m, m)["reach_per_post"]),
              card("Facebook post views", oa["views"], ob["views"], True, "num", series=lambda m: organic(posts, m, m)["views"]),
              card("TikTok video views", ta["views"], tb["views"], True, "num", series=lambda m: tiktok(tt, m, m)["views"], compared=tt_ok)],
             [card("Paid reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads")] + unique
@@ -215,7 +233,7 @@ def half_cards(ads, posts, tt, a0, n, acct=None) -> dict:
             [card("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], True, "num", "higher is better", series=lambda m: unit_costs(ads, m, m)["eng_per_k"], paid_series=True),
              card("Cost per engagement", ua["cpe"], ub["cpe"], False, "peso3", "lower is better", series=lambda m: unit_costs(ads, m, m)["cpe"], paid_series=True),
              card("Cost per mille (CPM)", ua["cpm"], ub["cpm"], False, "peso2", "lower is better", series=lambda m: unit_costs(ads, m, m)["cpm"], paid_series=True)],
-            [card("Ad engagement rate", ua["er_impr"], ub["er_impr"], True, "rate", "engagements / impressions"),
+            follows_per_k + [card("Ad engagement rate", ua["er_impr"], ub["er_impr"], True, "rate", "engagements / impressions"),
              card("Impressions per ₱1,000", ua["impr_per_k"], ub["impr_per_k"], True, "num", "higher is better")] + clicks]),
         ("Spend and Activity", [
             [card("Ad spend per month", ca["spend"] / n, cb["spend"] / n, None, "peso0", "Facebook ads"),

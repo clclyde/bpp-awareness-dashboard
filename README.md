@@ -21,7 +21,7 @@ cd bpp_dashboard
 The app reads Supabase when it finds `[supabase]` settings (`.streamlit/secrets.toml`, or `PULSE_DB_*` environment variables), using the read-only `pulse_reader_bpp` login. Without settings it falls back to a local, git-ignored `data/bpp_snapshot.json` if present, otherwise it shows an error box. Hosting: see `DEPLOY.md`.
 
 ## Data
-The data comes from the BPP Content SSOT (Google Sheet) and lives in Supabase (`social_ads_monthly`, `fb_posts`, `tiktok_videos`, read with the BPP-only login). A local, git-ignored `data/bpp_snapshot.json` is the fallback and the file the seed is generated from:
+The data comes from the BPP Content SSOT (Google Sheet) and lives in Supabase (`social_ads_monthly`, `fb_posts`, `tiktok_videos`, `fb_page_metrics`, read with the BPP-only login). A local, git-ignored `data/bpp_snapshot.json` is the fallback and the file the seed is generated from:
 - **ads**: the monthly Ads Manager export tabs (`AUG - AM` ... `OCT Ads`), one row per campaign (March 2026 is exported per ad).
 - **posts**: the monthly Facebook post tabs plus the `YTD Meta` tab (a few posts were missing from the monthly tabs and were added from it).
 - **tiktok**: `YTD TikTok` (2026) plus the `AUG - TT` and `SEPT - TT` tabs (2025). The SSOT has no TikTok videos for Oct to Dec 2025; those posts come from TikTok Studio Posts-list screenshots supplied by the marketing team (lifetime views, likes and comments; no shares, so engagement is likes + comments; no post links).
@@ -43,4 +43,4 @@ Follows the deck's Paid awareness definitions, with these differences, all state
 Weekly reach, target audiences, follower growth, brand health (branded search, brand lift, survey). The "Targets" tab (`Tables`) of the SSOT holds Aug and Sep **2025** figures, so it is not used.
 
 ## Hosting
-Streamlit Community Cloud as its own app from the private repo `clclyde/bpp-awareness-dashboard`; the data lives in Supabase (tables `social_ads_monthly`, `fb_posts`, `tiktok_videos`). Steps in `DEPLOY.md`.
+Streamlit Community Cloud as its own app from the private repo `clclyde/bpp-awareness-dashboard`; the data lives in Supabase (tables `social_ads_monthly`, `fb_posts`, `tiktok_videos`, `fb_page_metrics`). Steps in `DEPLOY.md`.

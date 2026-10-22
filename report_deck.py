@@ -7,7 +7,8 @@ Run (from this folder):
   python report_deck.py --month 2026-09               # data/bpp_snapshot.json (local, git-ignored)
   python report_deck.py --month 2026-09 --live        # read Supabase with .streamlit/secrets.toml or PULSE_DB_* variables
   python report_deck.py --month 2026-09 --internal    # adds the team-only data check (yellow months, Ads Manager vs Ad Spend Report)
-  python report_deck.py --halves                      # half vs half review: the dashboard's KPI cards (default 6 months from 2025-10)
+  python report_deck.py --halves                      # half vs half review, 2 slides titled "Platform Distribution Level Up" (default 6 months from 2025-10)
+  python report_deck.py --halves --layout halves      # same cards as first period on the left, next period on the right (cards | halves | table)
   python report_deck.py --halves --start 2025-10 --n 6
 Without --month the last full month is used. Needs: pip install -r requirements-report.txt
 
@@ -139,8 +140,8 @@ def build_report(S: dict, month: str | None, internal: bool) -> dict:
     return R
 
 
-def build_halves(S: dict, start: str, n: int, internal: bool) -> dict:
-    """Half vs half review: the first n months from `start` against the next n months, as the dashboard's KPI Cards tab (data.half_cards)."""
+def build_halves(S: dict, start: str, n: int, internal: bool, layout: str = "cards") -> dict:
+    """Half vs half review: the first n months from `start` against the next n months, with the cards of the dashboard's KPI Cards tab (data.half_cards)."""
     ads, posts, tt = S["ads"], S["posts"], S["tiktok"]
     a0 = pd.Period(start, "M")
     last = D.last_full_month(ads, S["built_at"])
@@ -149,33 +150,17 @@ def build_halves(S: dict, start: str, n: int, internal: bool) -> dict:
     HC = D.half_cards(ads, posts, tt, a0, n)
     (a0, a1), (b0, b1) = HC["a"], HC["b"]
     rng = lambda x, y: f"{mlabel(x)} to {mlabel(y)}"
-    R = {"S": S, "HC": HC, "n": n, "internal": internal, "a_rng": rng(a0, a1), "b_rng": rng(b0, b1), "vs": f"first {n} months",
-         "label": f"{rng(a0, a1)} vs {rng(b0, b1)}", "file": f"BPP_Awareness_Halves_{a0}_{n}m"}
-    # intro: the same sentences as the dashboard's First vs Second Half tab
-    oa, ob = D.organic(posts, a0, a1), D.organic(posts, b0, b1)
-    ca, cb = D.paid(ads, a0, a1), D.paid(ads, b0, b1)
-    ua, ub = D.unit_costs(ads, a0, a1), D.unit_costs(ads, b0, b1)
-    mv = lambda c: f"{'grew' if c >= 0 else 'fell'} {abs(c):.0%}"
-    rp, pv, er = change(ob["reach_per_post"], oa["reach_per_post"]), change(ob["views"], oa["views"]), change(ob["er"], oa["er"])
-    ce, ek = change(ub["cpe"], ua["cpe"]), change(ub["eng_per_k"], ua["eng_per_k"])
-    rc, cc, sc = change(cb["reach_avg"], ca["reach_avg"]), change(cb["cpr"], ca["cpr"]), change(cb["spend"], ca["spend"])
-    intro = []
-    if None not in (rp, pv, er):
-        intro.append(f"On the Facebook page, reach per post {mv(rp)} ({num(oa['reach_per_post'])} to {num(ob['reach_per_post'])}) and post views {mv(pv)}"
-                     f"{', while' if (er < 0) != (min(rp, pv) < 0) else ', and'} the engagement rate {mv(er)} ({pct(oa['er'], 2)} to {pct(ob['er'], 2)}).")
-    if ce is not None and ek is not None:
-        intro.append(("Each peso of ad spend bought more: " if ce < 0 and ek > 0 else "Per peso of ad spend, ")
-                     + f"cost per engagement went {'down' if ce <= 0 else 'up'} {abs(ce):.1%} ({peso(ua['cpe'], 3)} to {peso(ub['cpe'], 3)}) "
-                     f"and engagements per ₱1,000 {'rose' if ek >= 0 else 'fell'} {abs(ek):.1%} ({num(ua['eng_per_k'])} to {num(ub['eng_per_k'])}).")
-    if rc is not None and cc is not None:
-        intro.append(f"In Facebook paid awareness, reach per month {'grew' if rc >= 0 else 'fell'} {abs(rc):.1%}, from {short(ca['reach_avg'])} to {short(cb['reach_avg'])}, "
-                     f"at a cost per 1,000 reached {'down' if cc <= 0 else 'up'} {abs(cc):.1%}" + (f", with monthly ad spend {'down' if sc < 0 else 'up'} {abs(sc):.1%}." if sc is not None else "."))
-    R["intro"] = " ".join(intro)
+    short_rng = lambda x, y: f"{x.strftime('%b')}–{mlabel(y)}" if x.year == y.year else f"{mlabel(x)}–{mlabel(y)}"   # Apr–Sep 2026, Oct 2025–Mar 2026
+    R = {"S": S, "HC": HC, "n": n, "internal": internal, "layout": layout, "a_rng": rng(a0, a1), "b_rng": rng(b0, b1), "a_short": short_rng(a0, a1), "b_short": short_rng(b0, b1),
+         "vs": f"first {n} months",
+         "label": f"{rng(a0, a1)} vs {rng(b0, b1)}", "file": f"BPP_Awareness_Halves_{a0}_{n}m_{layout}"}
     return R
 
 
 # ---------- deck ----------
 class Deck:
+    font = FONT
+
     def __init__(self, R):
         self.R = R
         self.prs = Presentation()
@@ -207,11 +192,10 @@ class Deck:
         self.run(p, text, size, bold, color)
         return tb
 
-    @staticmethod
-    def run(p, text, size, bold=False, color=TEXT):
+    def run(self, p, text, size, bold=False, color=TEXT):
         r = p.add_run()
         r.text = text
-        r.font.size, r.font.bold, r.font.name = Pt(size), bold, FONT
+        r.font.size, r.font.bold, r.font.name = Pt(size), bold, self.font
         r.font.color.rgb = rgb(color)
         return r
 
@@ -340,142 +324,6 @@ class Deck:
             tf.paragraphs[0].runs[0].font.color.rgb = rgb(NAVY)
         return ch
 
-    # --- KPI cards (half vs half) ---
-    KIND = {"num": (num, 0), "peso0": (peso, 0), "peso2": (lambda v: peso(v, 2), 2), "peso3": (lambda v: peso(v, 3), 3),
-            "rate": (lambda v: pct(v, 2), 4), "freq": (lambda v: "n/a" if pd.isna(v) else f"{v:.2f}", 2)}
-
-    def card(self, s, x, y, w, h, c, spark):
-        """One small card, read in the order the dashboard uses: the number now, a filled change pill (green better, red worse, grey within 2%),
-        then the previous number with the absolute change. spark=True: a wider card with the previous number beside the pill and a monthly
-        sparkline (first period grey, second blue) along the bottom; spark=False: a narrow card with the previous number under the pill."""
-        fmt, rnd = self.KIND[c["kind"]]
-        b = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
-        b.adjustments[0] = 0.05
-        b.fill.solid(); b.fill.fore_color.rgb = rgb(WHITE)
-        b.line.color.rgb = rgb(LINE); b.line.width = Pt(1)
-        b.shadow.inherit = False
-        st_ = b._element.find(qn("p:style"))
-        if st_ is not None:
-            b._element.remove(st_)
-        pad = 0.12
-        self.text(s, c["label"], x + pad, y + 0.08, w - 2 * pad, 0.3, 8.5, bold=True, color=TEXT)
-        val = fmt(c["b"])
-        size = 18 if spark else 16
-        while len(val) * size / 72 * 0.7 > w - 2 * pad and size > 11:   # long numbers on narrow cards get smaller rather than wrap
-            size -= 1
-        self.text(s, val, x + pad, y + 0.38, w - 2 * pad, 0.32, size, bold=True, color=NAVY)
-        chg = change(c["b"], c["a"]) if c["compared"] else None
-        pill_t = "Not compared" if not c["compared"] else ("n/a" if chg is None else f"{'▲' if chg > 0 else '▼'} {abs(chg):.1%}")
-        bg = "66717D" if (chg is None or c["better"] is None or abs(chg) < 0.02) else ("1E7D32" if (chg > 0) == c["better"] else RED)
-        pw, py = 0.075 * len(pill_t) + 0.24, y + 0.72
-        pill = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x + pad), Inches(py), Inches(pw), Inches(0.23))
-        pill.adjustments[0] = 0.2
-        pill.fill.solid(); pill.fill.fore_color.rgb = rgb(bg)
-        pill.line.fill.background()
-        pill.shadow.inherit = False
-        st_ = pill._element.find(qn("p:style"))
-        if st_ is not None:
-            pill._element.remove(st_)
-        tf = pill.text_frame
-        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
-        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.paragraphs[0].alignment = PP_ALIGN.CENTER
-        self.run(tf.paragraphs[0], pill_t, 9.5, True, WHITE)
-        # previous number: beside the pill on the wider cards, under it on the narrow ones
-        px, pyy = (x + pad + pw + 0.08, py + 0.04) if spark else (x + pad, py + 0.27)
-        tb = self.text(s, "vs ", px, pyy, x + w - pad - px, 0.2, 8, color=TEXT)
-        p = tb.text_frame.paragraphs[0]
-        self.run(p, fmt(c["a"]), 8, True, NAVY)
-        if c["compared"] and not (pd.isna(c["a"]) or pd.isna(c["b"])):
-            d = round(c["b"], rnd) - round(c["a"], rnd)
-            ds = (f"{abs(d) * 100:.2f} pts" if c["kind"] == "rate" else fmt(abs(d)))
-            self.run(p, f" ({'+' if d >= 0 else '−'}{ds})", 7.5, False, MUTED)
-        if spark and c["series"] is not None:
-            self.sparkline(s, x + 0.04, y + 1.0, w - 0.08, h - 1.04, c["series"])
-
-    def sparkline(self, s, x, y, w, h, vals):
-        """Monthly values of both periods; the second line starts at the first period's last month so the two join."""
-        n = len(vals) // 2
-        cd = CategoryChartData()
-        cd.categories = [m.strftime("%b %y") for m in self.R["HC"]["months"]]
-        f = lambda v: None if (v is None or pd.isna(v)) else float(v)
-        cd.add_series("First period", [f(v) if i <= n - 1 else None for i, v in enumerate(vals)])
-        cd.add_series("Second period", [f(v) if i >= n - 1 else None for i, v in enumerate(vals)])
-        ch = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(x), Inches(y), Inches(w), Inches(h), cd).chart
-        ch.has_title = False
-        ch.has_legend = False
-        ch.value_axis.visible = False
-        ch.value_axis.has_major_gridlines = False
-        ch.category_axis.visible = False
-        for ser, colour in zip(ch.plots[0].series, ("A6B8C6", BLUE)):
-            ser.smooth = False
-            ser.format.line.color.rgb = rgb(colour); ser.format.line.width = Pt(1.75)
-            ser.marker.style, ser.marker.size = XL_MARKER_STYLE.CIRCLE, 4
-            ser.marker.format.fill.solid(); ser.marker.format.fill.fore_color.rgb = rgb(colour); ser.marker.format.line.color.rgb = rgb(colour)
-
-    def card_row(self, s, y, cards, h, spark):
-        """All cards of one group side by side, the same width and height; returns the y below the row."""
-        gap = 0.15
-        cw = (W - 1.2 - gap * (len(cards) - 1)) / len(cards)
-        for i, c in enumerate(cards):
-            self.card(s, 0.6 + i * (cw + gap), y, cw, h, c, spark)
-        return y + h
-
-    def group_title(self, s, y, title):
-        self.text(s, title, 0.6, y, 8, 0.26, 11.5, bold=True, color=NAVY)
-        return y + 0.28
-
-    def build_halves(self):
-        R, HC = self.R, self.R["HC"]
-        n = R["n"]
-        sub = f"Next {n} months ({R['b_rng']}) against the first {n} months ({R['a_rng']})"
-
-        # 1. cover
-        s = self.new()
-        self.rect(s, 0, 0, 5.1, 3.7, NAVY)
-        self.rect(s, 6.8, H - 0.74, W - 6.8, 0.74, RED)
-        self.rect(s, 0, H - 0.74, 5.1, 0.74, RED)
-        self.text(s, "BUDOL-PROOF PINOY", 5.6, 2.2, 7.1, 0.7, 30, color=BLUE, align=PP_ALIGN.RIGHT)
-        self.text(s, "Brand Awareness", 4.6, 2.95, 8.1, 1.1, 48, bold=True, color=YELLOW, align=PP_ALIGN.RIGHT)
-        self.text(s, f"FIRST {n} MONTHS VS NEXT {n} MONTHS", 5.1, 4.55, 7.6, 0.4, 18, bold=True, color=TEXT, align=PP_ALIGN.RIGHT)
-        self.text(s, f"{R['a_rng']}  vs  {R['b_rng']}", 5.1, 4.95, 7.6, 0.4, 16, bold=True, color=TEXT, align=PP_ALIGN.RIGHT)
-        self.text(s, "Draft: numbers to be checked against Meta and TikTok before this goes to the client.", 5.6, 5.55, 7.1, 0.4, 10, color=MUTED, align=PP_ALIGN.RIGHT)
-
-        # 2. every metric on one slide: one band per group, strongest group first. A group of up to five cards gets wider cards with monthly
-        # sparklines; a longer group (spend and activity, or the per-peso group once click-through rate is loaded) gets narrow cards in one row.
-        s = self.slide("Second half", "results", sub)
-        y = 1.5
-        for title, rows in HC["groups"]:
-            cards = [c for row in rows for c in row]
-            spark = len(cards) <= 5
-            y = self.card_row(s, self.group_title(s, y, title), cards, 1.36 if spark else 1.22, spark) + 0.08
-        self.text(s, "Green = better for BPP, red = worse, grey = about the same (within 2%) or neither (spend, frequency). "
-                     f"Small charts: each month, first {n} months grey, next {n} blue. Rate changes in percentage points (pts).", 0.6, 6.55, 12.1, 0.2, 8, color=MUTED)
-
-        # 3. summary and next steps
-        s = self.slide("Summary and", "next steps", sub)
-        self.takeaway(s, 0.6, 1.65, 6.4, 2.5, [("Summary", R["intro"])], size=12)
-        self.rect(s, 0.6, 4.35, 6.4, 1.95, WHITE, line=LINE, lw=1.25)
-        self.text(s, "Planner's notes", 0.85, 4.5, 5.9, 0.3, 12, bold=True, color=BLUE)
-        self.text(s, "What drove these results, and what we do next.", 0.85, 4.85, 5.9, 1.2, 12, color=MUTED)
-        self.text(s, "About these numbers", 7.4, 1.65, 5.3, 0.3, 13, bold=True, color=NAVY)
-        tb = s.shapes.add_textbox(Inches(7.4), Inches(2.05), Inches(5.3), Inches(4.2))
-        tf = tb.text_frame; tf.word_wrap = True
-        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
-        bullets = ["Facebook ads: Ads Manager monthly exports, ad spend ex-VAT. Reach adds up campaign reach, so the number of different people is lower.",
-                   "Cost per mille = cost per 1,000 impressions. Ad engagement rate = post engagements / impressions.",
-                   "Facebook page posts include boosted posts; figures are lifetime numbers of the posts published in each period. Facebook engagement rate = engagements / reach.",
-                   "TikTok has views and engagement only (no reach), so engagement is shown per view.",
-                   "Being added next: click-through rate, unique reach and follower growth, from Meta's monthly reports.",
-                   "Awareness is reported as delivery and cost: reach measures exposure, not recall."]
-        if R["internal"]:
-            bullets.append("INTERNAL: the Feb and May 2026 Ads Manager exports are incomplete, so spend and reach for those months are understated.")
-        for i, b_ in enumerate(bullets):
-            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-            p.space_after = Pt(7)
-            self.run(p, "• " + b_, 11, False, TEXT)
-        return self.prs
-
     # --- slides ---
     def build(self):
         R, c, ch, org, tk, pm = self.R, self.R["cur"], self.R["chg"], self.R["org"], self.R["tk"], self.R["pm"]
@@ -585,6 +433,315 @@ class Deck:
         return self.prs
 
 
+class HalvesDeck(Deck):
+    """Half vs half review in the look of the "Share-Led Content Focus" deck: cream page, dark ink, deep green for results that improved and burnt orange for
+    results that got worse, DM Sans, white rounded cards and a dark note bar. Two slides under one title, "Platform Distribution Level Up".
+    The cards come from data.half_cards, the same list the dashboard's KPI Cards tab uses. Each card reads in the order Sir Joven asked for: the number now,
+    a filled change pill, then the previous number and the difference."""
+    font = "DM Sans"
+    CREAM, INK, TEAL, ORANGE, ASH, EDGE, SAGE = "F6F4EF", "1B2A34", "17695D", "B4480F", "4F5D66", "D9D5CA", "A9B8B3"
+    TITLE = "Platform Distribution Level Up"
+    X0, CW = 0.9, 11.55
+    KIND = {"num": (num, 0), "peso0": (peso, 0), "peso2": (lambda v: peso(v, 2), 2), "peso3": (lambda v: peso(v, 3), 3),
+            "rate": (lambda v: pct(v, 2), 4), "freq": (lambda v: "n/a" if pd.isna(v) else f"{v:.2f}", 2)}
+    # big cards (with a monthly sparkline) and table rows of each slide; a card that is not listed (click-through rate and cost per click once clicks are loaded)
+    # is added to the table of the second slide, so nothing silently drops out
+    LAYOUT = [{"big": ["Average reach per Facebook post", "Facebook post views", "TikTok video views"],
+               "rows": ["Paid reach per month", "Reach per ₱1,000", "Impressions per ₱1,000", "TikTok engagement per view"]},
+              {"big": ["Engagements per ₱1,000", "Cost per engagement", "Cost per mille (CPM)"],
+               "rows": ["Ad engagement rate", "Cost per 1,000 reached", "Ad spend per month", "Average frequency",
+                        "Facebook posts published", "TikTok videos posted", "Facebook engagement rate"]}]
+    TAGS = {"Average reach per Facebook post": "FACEBOOK PAGE", "Facebook post views": "FACEBOOK PAGE", "TikTok video views": "TIKTOK",
+            "Engagements per ₱1,000": "FACEBOOK ADS", "Cost per engagement": "FACEBOOK ADS", "Cost per mille (CPM)": "FACEBOOK ADS"}
+
+    # --- primitives ---
+    def box(self, s, x, y, w, h, fill, line=None, adj=0.04):
+        b = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+        b.adjustments[0] = adj
+        b.fill.solid(); b.fill.fore_color.rgb = rgb(fill)
+        if line:
+            b.line.color.rgb = rgb(line); b.line.width = Pt(1)
+        else:
+            b.line.fill.background()
+        b.shadow.inherit = False
+        st_ = b._element.find(qn("p:style"))   # drop the theme style reference: it brings a drop shadow in some viewers
+        if st_ is not None:
+            b._element.remove(st_)
+        return b
+
+    def tone(self, c):
+        """Colour of a card: green when it got better, orange when worse, ash when about the same (within 2%), not compared, or neither better nor worse."""
+        chg = change(c["b"], c["a"]) if c["compared"] else None
+        if chg is None or c["better"] is None or abs(chg) < 0.02:
+            return self.ASH
+        return self.TEAL if (chg > 0) == c["better"] else self.ORANGE
+
+    @staticmethod
+    def pill_text(c):
+        chg = change(c["b"], c["a"]) if c["compared"] else None
+        return "Not compared" if not c["compared"] else ("n/a" if chg is None else f"{'▲' if chg > 0 else '▼'} {abs(chg):.1%}")
+
+    def pill(self, s, x, y, w, h, c, size):
+        t = self.pill_text(c)
+        p = self.box(s, x, y, w, h, self.tone(c), adj=0.22)
+        tf = p.text_frame
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.paragraphs[0].alignment = PP_ALIGN.CENTER
+        self.run(tf.paragraphs[0], t, size, True, WHITE)
+
+    def diff(self, c):
+        """Absolute change as text: '+1,200', '−₱0.50', '+0.40 pts'; empty when either period has no value."""
+        if not c["compared"] or pd.isna(c["a"]) or pd.isna(c["b"]):
+            return ""
+        fmt, rnd = self.KIND[c["kind"]]
+        d = round(c["b"], rnd) - round(c["a"], rnd)
+        return ("+" if d >= 0 else "−") + (f"{abs(d) * 100:.2f} pts" if c["kind"] == "rate" else fmt(abs(d)))
+
+    def sparkline(self, s, x, y, w, h, vals):
+        """Monthly values of both periods; the second line starts at the first period's last month so the two join."""
+        n = len(vals) // 2
+        cd = CategoryChartData()
+        cd.categories = [m.strftime("%b %y") for m in self.R["HC"]["months"]]
+        f = lambda v: None if (v is None or pd.isna(v)) else float(v)
+        cd.add_series("First period", [f(v) if i <= n - 1 else None for i, v in enumerate(vals)])
+        cd.add_series("Second period", [f(v) if i >= n - 1 else None for i, v in enumerate(vals)])
+        ch = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(x), Inches(y), Inches(w), Inches(h), cd).chart
+        ch.has_title = False
+        ch.has_legend = False
+        ch.value_axis.visible = False
+        ch.value_axis.has_major_gridlines = False
+        ch.category_axis.visible = False
+        for ser, colour in zip(ch.plots[0].series, (self.SAGE, self.TEAL)):
+            ser.smooth = False
+            ser.format.line.color.rgb = rgb(colour); ser.format.line.width = Pt(2)
+            ser.marker.style, ser.marker.size = XL_MARKER_STYLE.CIRCLE, 5
+            ser.marker.format.fill.solid(); ser.marker.format.fill.fore_color.rgb = rgb(colour); ser.marker.format.line.color.rgb = rgb(colour)
+
+    # --- page pieces ---
+    def page(self, subtitle, source):
+        s = self.new()
+        s.background.fill.solid()
+        s.background.fill.fore_color.rgb = rgb(self.CREAM)
+        self.text(s, self.TITLE, self.X0, 0.5, self.CW, 0.6, 28, True, self.INK)
+        self.text(s, subtitle, self.X0, 1.12, self.CW, 0.55, 13, color=self.ASH)
+        self.text(s, source, self.X0, 6.88, self.CW, 0.45, 10, color=self.ASH)
+        return s
+
+    def big_card(self, s, x, y, w, h, c, compact=False):
+        """A key KPI: platform tag, name, the number now, the change pill, the previous number with the difference, and the monthly sparkline.
+        compact=True is for slides where a second row of cards sits below (a slightly smaller number and tighter spacing)."""
+        self.box(s, x, y, w, h, WHITE, self.EDGE)
+        fmt, _ = self.KIND[c["kind"]]
+        pad, n = 0.22, self.R["n"]
+        ny, size, py = (0.78, 30, 1.34) if compact else (0.84, 34, 1.5)
+        if c["label"] in self.TAGS:
+            self.text(s, self.TAGS[c["label"]], x + pad, y + 0.14, w - 2 * pad, 0.2, 10.5, True, self.TEAL)
+        self.text(s, c["label"], x + pad, y + 0.34 if compact else y + 0.37, w - 2 * pad, 0.5, 15, True, self.INK)
+        t = self.tone(c)
+        self.text(s, fmt(c["b"]), x + pad, y + ny, w - 2 * pad, 0.6, size, True, self.INK if t == self.ASH else t)
+        py += y
+        pw = 0.092 * len(self.pill_text(c)) + 0.3
+        self.pill(s, x + pad, py, pw, 0.3, c, 12)
+        tb = self.text(s, "vs ", x + pad + pw + 0.12, py, w - 2 * pad - pw - 0.12, 0.3, 13, False, self.INK, anchor=MSO_ANCHOR.MIDDLE)
+        self.run(tb.text_frame.paragraphs[0], fmt(c["a"]), 13, True, self.INK)
+        if self.diff(c):
+            self.text(s, f"{self.diff(c)} vs the first {n} months", x + pad, py + (0.34 if compact else 0.36), w - 2 * pad, 0.22, 11, color=self.ASH)
+        if c["series"] is not None:
+            self.sparkline(s, x + 0.1, y + h - 0.47, w - 0.2, 0.42, c["series"])
+
+    def small_card(self, s, x, y, w, h, c, tight=False):
+        """A secondary KPI in the same reading order as the big cards: name, the number now, the change pill with the previous number.
+        tight=True is for five cards in a row (smaller type), used when more cards than usual have to share the slide."""
+        self.box(s, x, y, w, h, WHITE, self.EDGE)
+        fmt, _ = self.KIND[c["kind"]]
+        pad = 0.18 if tight else 0.2
+        k = len(c["label"])
+        if tight:
+            size = 10.5 if k <= 18 else 9.5
+        else:
+            size = 12 if k <= 20 else (11 if k <= 24 else 10.5)
+        self.text(s, c["label"], x + pad, y + 0.12, w - 2 * pad, 0.24, size, True, self.INK)
+        t = self.tone(c)
+        self.text(s, fmt(c["b"]), x + pad, y + 0.36, w - 2 * pad, 0.45, 22 if tight else 24, True, self.INK if t == self.ASH else t)
+        py = y + 0.86
+        pw = 0.085 * len(self.pill_text(c)) + 0.28
+        self.pill(s, x + pad, py, pw, 0.27, c, 10.5 if tight else 11)
+        vsz = 11 if tight else 12
+        tb = self.text(s, "vs ", x + pad + pw + 0.1, py, w - 2 * pad - pw - 0.1, 0.27, vsz, False, self.INK, anchor=MSO_ANCHOR.MIDDLE)
+        self.run(tb.text_frame.paragraphs[0], fmt(c["a"]), vsz, True, self.INK)
+
+    def half_panel(self, s, x, y, w, row_h, tag, rng, cards, second, stack):
+        """One half of the half vs half layout, like the dashboard's first tab: a panel for the first period (the numbers with a Baseline pill) and one for the next
+        period (the numbers with the change pill), metrics in the same grid cell in both so each pair sits level."""
+        cols = 3 if stack else 2     # stacked cells (pill under the number) are narrower, so a third column keeps long numbers and names clear of each other
+        h = 0.8 + -(-len(cards) // cols) * row_h + 0.12
+        self.box(s, x, y, w, h, "E9F2EF" if second else WHITE, self.TEAL if second else self.EDGE)
+        self.text(s, tag, x + 0.25, y + 0.15, w - 0.5, 0.22, 11, True, self.TEAL)
+        self.text(s, rng, x + 0.25, y + 0.36, w - 0.5, 0.28, 14, False, self.ASH)
+        cw = (w - 0.5) / cols
+        for i, c in enumerate(cards):
+            r, col = divmod(i, cols)
+            cx, cy = x + 0.25 + col * cw, y + 0.8 + r * row_h
+            fmt, _ = self.KIND[c["kind"]]
+            self.text(s, c["label"], cx, cy, cw - 0.12, 0.4 if stack else 0.22, 10.5 if stack else 11, False, self.ASH)
+            t = self.tone(c)
+            size, ny = (22, 0.38) if stack else (20, 0.2)
+            self.text(s, fmt(c["b"] if second else c["a"]), cx, cy + ny, cw - 0.1, 0.45, size, True, t if (second and t != self.ASH) else self.INK)
+            label = self.pill_text(c) if second else "Baseline"
+            pw = 0.085 * len(label) + 0.28
+            px, py = (cx, cy + 0.84) if stack else (cx + cw - 0.12 - pw, cy + 0.27)
+            if second:
+                self.pill(s, px, py, pw, 0.26, c, 10.5)
+            else:
+                p = self.box(s, px, py, pw, 0.26, "EAE6DC", adj=0.22)
+                tf = p.text_frame
+                tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+                tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+                tf.paragraphs[0].alignment = PP_ALIGN.CENTER
+                self.run(tf.paragraphs[0], label, 10.5, True, self.ASH)
+        return y + h
+
+    def table(self, s, y, cards, max_h=2.0):
+        """The remaining KPIs as rows: name, the number now, the change pill, the previous number and the difference."""
+        fmt_of = lambda c: self.KIND[c["kind"]][0]
+        cols = {"name": 0.9, "val": 5.2, "chg": 7.0, "prev": 8.7, "diff": 10.5}
+        for k, label in (("name", "Metric"), ("val", f"Next {self.R['n']} months"), ("chg", "Change"), ("prev", f"First {self.R['n']} months"), ("diff", "Difference")):
+            self.text(s, label, cols[k], y, 1.8 if k != "name" else 4, 0.26, 11, True, self.ASH)
+        rh = min(0.32, max_h / max(len(cards), 1))
+        y0 = y + 0.3
+        for i, c in enumerate(cards):
+            ry = y0 + i * rh
+            self.rect(s, self.X0, ry, self.CW, 0.01, self.EDGE)
+            fmt = fmt_of(c)
+            t = self.tone(c)
+            mid = MSO_ANCHOR.MIDDLE
+            self.text(s, c["label"], cols["name"], ry, 4.2, rh, 13, True, self.INK, anchor=mid)
+            self.text(s, fmt(c["b"]), cols["val"], ry, 1.7, rh, 14, True, self.INK if t == self.ASH else t, anchor=mid)
+            ph = min(0.24, rh - 0.04)
+            self.pill(s, cols["chg"], ry + (rh - ph) / 2, 1.2, ph, c, 11)
+            self.text(s, fmt(c["a"]), cols["prev"], ry, 1.7, rh, 13, False, self.INK, anchor=mid)
+            self.text(s, self.diff(c), cols["diff"], ry, 1.9, rh, 12, False, self.ASH, anchor=mid)
+        self.rect(s, self.X0, y0 + len(cards) * rh, self.CW, 0.01, self.EDGE)
+        return y0 + len(cards) * rh
+
+    def bar(self, s, y, label, text):
+        """The dark note bar of the reference deck: a bold lead-in word and one sentence."""
+        self.box(s, self.X0, y, self.CW, 0.5, self.INK, adj=0.3)
+        tb = self.text(s, f"{label} ", self.X0 + 0.25, y, self.CW - 0.5, 0.5, 13, True, WHITE, anchor=MSO_ANCHOR.MIDDLE)
+        self.run(tb.text_frame.paragraphs[0], text, 13, False, WHITE)
+
+    @staticmethod
+    def notes(s, text):
+        s.notes_slide.notes_text_frame.text = text
+
+    def spec(self):
+        """What the two slides say and which cards they hold; the layouts below only decide how the cards are drawn."""
+        R, HC, n = self.R, self.R["HC"], self.R["n"]
+        by = {c["label"]: c for g in HC["groups"] for row in g[1] for c in row}
+        listed = {l for sl in self.LAYOUT for k in ("big", "rows") for l in sl[k]}
+        extras = [c for l, c in by.items() if l not in listed]       # cards the layout does not know yet (click-through rate, cost per click)
+        mv = lambda c: f"{'up' if change(c['b'], c['a']) >= 0 else 'down'} {abs(change(c['b'], c['a'])):.1%}"
+        vs = f"({R['b_short']} vs {R['a_short']})"
+        up = lambda c: c["compared"] and (change(c["b"], c["a"]) or 0) > 0
+
+        # slide 1: how far the content travelled
+        big = [by[l] for l in self.LAYOUT[0]["big"] if l in by]
+        rows = [by[l] for l in self.LAYOUT[0]["rows"] if l in by]
+        if len(big) == 3 and all(up(c) for c in big):
+            sub = f"Content travelled further on both platforms: reach per Facebook post {mv(big[0])} and TikTok video views {mv(big[2])} {vs}."
+        else:
+            sub = f"How far content travelled on Facebook and TikTok {vs}."
+        posts, vids = by.get("Facebook posts published"), by.get("TikTok videos posted")
+        counts = (f"{int(posts['a'] + posts['b'])} Facebook posts and {int(vids['a'] + vids['b'])} TikTok videos, " if posts and vids else "")
+        foot = f"Source: BPP Content SSoT 2025–2026 and TikTok Studio; {counts}{R['a_rng']} and {R['b_rng']}. Reach per post and views are lifetime figures of the posts published in each period."
+        pr, sp = by.get("Paid reach per month"), by.get("Ad spend per month")
+        bar = None
+        if pr and sp and pr["compared"] and sp["compared"]:
+            bar = ("Note:", f"Facebook page posts include boosted posts, so part of this reach is paid. Paid reach per month is {mv(pr)} on ad spend per month {mv(sp)}.")
+        notes = (f"How to read each card: the big number is the latest {n} months ({R['b_rng']}); the filled pill is the change against the first {n} months ({R['a_rng']}), "
+                 "green when it got better, orange when it got worse, grey when it is about the same (within 2%) or neither better nor worse; the line underneath is the previous number. "
+                 f"The small chart, where there is one, shows each month: the first {n} months in light green and the next {n} in dark green.\n\n"
+                 "Reach per Facebook post is the average reach of the posts published in the period (lifetime numbers as exported); Facebook page posts include boosted posts. "
+                 "Post views and TikTok video views are totals for the period. Paid reach adds up campaign reach in Ads Manager, so the number of different people is lower. "
+                 "Reach and impressions per ₱1,000 show how much distribution each ₱1,000 of ad spend bought. TikTok engagement per view is likes, comments and shares divided by views.")
+        out = [dict(big=big, rows=rows, sub=sub, foot=foot, bar=bar, notes=notes, stack=True, table_h=1.4)]
+
+        # slide 2: what each peso delivered, and how much we posted
+        big = [by[l] for l in self.LAYOUT[1]["big"] if l in by]
+        rows = [by[l] for l in self.LAYOUT[1]["rows"] if l in by]
+        rows[1:1] = extras
+        eng, cpe = by.get("Engagements per ₱1,000"), by.get("Cost per engagement")
+        if eng and cpe and change(eng["b"], eng["a"]) > 0 and change(cpe["b"], cpe["a"]) < 0:
+            sub = f"Each peso of ad spend delivered more: engagements per ₱1,000 {mv(eng)} and cost per engagement {mv(cpe)} {vs}."
+        else:
+            sub = f"What each peso of ad spend delivered, and how much we posted {vs}."
+        worse = [c for c in rows if c["better"] is True and c["compared"] and (change(c["b"], c["a"]) or 0) < -0.02]
+        if worse:   # the orange figures, said once in words so the headline does not read as all good news
+            sub += f" {len(worse)} of the figures below went down."
+        foot = "Source: Facebook Ads Manager monthly exports, ad spend ex-VAT. Reach adds up campaign reach, so the number of different people is lower. The difference of a rate is in percentage points (pts)."
+        if R["internal"]:
+            foot += " INTERNAL: the Feb and May 2026 exports are incomplete, so spend and reach for those months are understated."
+        notes = ("Same reading as the previous slide. Engagements per ₱1,000 and impressions per ₱1,000 are what each ₱1,000 of Facebook ad spend bought (higher is better). "
+                 "Cost per engagement, cost per mille (CPM, cost per 1,000 impressions) and cost per 1,000 reached are what each result cost (lower is better). "
+                 "Ad engagement rate is post engagements divided by impressions. Ad spend per month and average frequency are context, not good or bad, so they stay grey. "
+                 "Facebook posts published and TikTok videos posted show how much we posted; the Facebook engagement rate is engagements divided by reach of the page posts.")
+        watch = ("Down:", ", ".join(c["label"] for c in worse) + ".") if worse else None
+        out.append(dict(big=big, rows=rows, sub=sub, foot=foot, bar=None, watch=watch, notes=notes, stack=False, table_h=1.95))
+        return out
+
+    # --- layouts ---
+    def draw_table(self, s, sp):
+        """Three key cards, then the other figures as table rows."""
+        cw = (self.CW - 0.46) / 3
+        for i, c in enumerate(sp["big"]):
+            self.big_card(s, self.X0 + i * (cw + 0.23), 1.75, cw, 2.62, c)
+        y = self.table(s, 4.52, sp["rows"], max_h=sp["table_h"])
+        if sp["bar"]:
+            self.bar(s, y + 0.2, *sp["bar"])
+
+    def draw_cards(self, s, sp):
+        """Everything as cards: three key cards with monthly charts, then rows of smaller cards in the same reading order."""
+        cw = (self.CW - 0.46) / 3
+        for i, c in enumerate(sp["big"]):
+            self.big_card(s, self.X0 + i * (cw + 0.23), 1.72, cw, 2.4, c, compact=True)
+        rows = sp["rows"]
+        cols = 5 if len(rows) > 8 else 4    # click-through rate and cost per click add two cards: five to a row keeps everything on the slide
+        sw, y = (self.CW - 0.12 * (cols - 1)) / cols, 4.26
+        for k in range(0, len(rows), cols):
+            for i, c in enumerate(rows[k:k + cols]):
+                self.small_card(s, self.X0 + i * (sw + 0.12), y, sw, 1.2, c, tight=cols == 5)
+            y += 1.3
+        if sp.get("watch") and len(rows) % cols:   # the free slot at the end of the last row: a dark card in the style of the reference deck
+            i = len(rows) % cols
+            fx, fw = self.X0 + i * (sw + 0.12), sw * (cols - i) + 0.12 * (cols - i - 1)
+            self.box(s, fx, y - 1.3, fw, 1.2, self.INK, adj=0.08)
+            tb = self.text(s, sp["watch"][0] + " ", fx + 0.25, y - 1.3, fw - 0.5, 1.2, 13, True, WHITE, anchor=MSO_ANCHOR.MIDDLE)
+            self.run(tb.text_frame.paragraphs[0], sp["watch"][1], 13, False, WHITE)
+        if sp["bar"]:
+            self.bar(s, y + 0.05, *sp["bar"])
+
+    def draw_halves(self, s, sp):
+        """The half vs half format of the dashboard's first tab: the first period on the left, the next period on the right, every metric level across both."""
+        n, R = self.R["n"], self.R
+        cards = sp["big"] + sp["rows"]
+        pw = (self.CW - 0.3) / 2
+        rows_n = -(-len(cards) // (3 if sp["stack"] else 2))
+        row_h = 1.15 if sp["stack"] else min(0.78, (6.65 - 1.75 - 0.92) / rows_n)   # more metrics (click-through rate, cost per click) squeeze the rows
+        y = self.half_panel(s, self.X0, 1.75, pw, row_h, f"FIRST {n} MONTHS", R["a_rng"], cards, False, sp["stack"])
+        self.half_panel(s, self.X0 + pw + 0.3, 1.75, pw, row_h, f"NEXT {n} MONTHS", R["b_rng"], cards, True, sp["stack"])
+        if sp["bar"]:
+            self.bar(s, y + 0.12, *sp["bar"])
+
+    def build(self):
+        draw = {"table": self.draw_table, "cards": self.draw_cards, "halves": self.draw_halves}[self.R["layout"]]
+        for sp in self.spec():
+            s = self.page(sp["sub"], sp["foot"])
+            draw(s, sp)
+            self.notes(s, sp["notes"])
+        return self.prs
+
+
 def main():
     ap = argparse.ArgumentParser(description="Build the BPP brand awareness review deck")
     ap.add_argument("--month", help="YYYY-MM (default: last full month)")
@@ -594,6 +751,8 @@ def main():
     ap.add_argument("--halves", action="store_true", help="half vs half review (the dashboard's KPI cards) instead of the monthly review")
     ap.add_argument("--start", default="2025-10", help="with --halves: first month of the first period (default 2025-10)")
     ap.add_argument("--n", type=int, default=6, help="with --halves: months per period (default 6)")
+    ap.add_argument("--layout", choices=["cards", "halves", "table"], default="cards",
+                    help="with --halves: cards (every figure a card), halves (first period left, next period right, like the dashboard's first tab) or table (key cards plus table rows)")
     a = ap.parse_args()
     conf = load_conf() if a.live else None
     if a.live and not conf:
@@ -602,10 +761,10 @@ def main():
         raise SystemExit("No local snapshot (data/bpp_snapshot.json). Use --live to read Supabase.")
     S = D.load(conf)
     if a.halves:
-        R = build_halves(S, a.start, a.n, a.internal)
+        R = build_halves(S, a.start, a.n, a.internal, a.layout)
         out = Path(a.out) if a.out else HERE / "out" / f"{R['file']}.pptx"
         out.parent.mkdir(parents=True, exist_ok=True)
-        Deck(R).build_halves().save(out)
+        HalvesDeck(R).build().save(out)
         print(f"Saved {out}  ({R['label']}, source: {S['source']})")
         return
     R = build_report(S, a.month, a.internal)

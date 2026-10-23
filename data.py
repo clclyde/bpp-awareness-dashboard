@@ -243,10 +243,11 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None, tt_platform=None)
     platform = [card(PLATFORM_METRICS[k], pa[k], pb[k], True, "num", "platform analytics, figure of the whole period") for k in PLATFORM_METRICS if k in pa and k in pb]
     groups = [
         ("Audience Growth", [
-            new_follows + [card("Average reach per Facebook post", oa["reach_per_post"], ob["reach_per_post"], True, "num", series=lambda m: organic(posts, m, m)["reach_per_post"]),
+            [card("Average reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads, monthly average of the campaign reach", series=lambda m: paid(ads, m, m)["reach"], paid_series=True)]
+            + new_follows + [card("Average reach per Facebook post", oa["reach_per_post"], ob["reach_per_post"], True, "num", series=lambda m: organic(posts, m, m)["reach_per_post"]),
              card("Facebook post views", oa["views"], ob["views"], True, "num", series=lambda m: organic(posts, m, m)["views"]),
-             card("TikTok video views", ta["views"], tb["views"], True, "num", series=lambda m: tiktok(tt, m, m)["views"], compared=tt_ok)],
-            [card("Paid reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads"),
+             ],
+            [card("TikTok video views", ta["views"], tb["views"], True, "num", series=lambda m: tiktok(tt, m, m)["views"], compared=tt_ok),
              card("Total reach", ca["reach"], cb["reach"], True, "num", "sum of the monthly campaign reach, Facebook ads", series=lambda m: paid(ads, m, m)["reach"], paid_series=True)] + unique
             + [card("TikTok engagement per view", ta["eng_per_view"], tb["eng_per_view"], True, "rate", "likes, comments, shares / views", compared=tt_ok)]]
             + ([platform] if platform else [])),

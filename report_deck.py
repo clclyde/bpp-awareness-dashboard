@@ -453,22 +453,21 @@ class HalvesDeck(Deck):
     # big cards (with a monthly sparkline) and table rows of each slide. "big" lists candidates in order: the first three that exist become the key cards and the
     # rest join the rows, so the deck still builds when follows are not loaded. A card that is not listed is added to the table of the second slide, so nothing
     # silently drops out
-    LAYOUT = [{"big": ["Facebook followers", "Average reach per Facebook post", "Facebook post views", "New Facebook follows", "TikTok video views"],
-               "rows": ["TikTok followers", "TikTok reach", "TikTok engagements", "Total reach", "Paid reach per month", "Unique people reached per month", "Reach per ₱1,000",
+    LAYOUT = [{"big": ["Average reach per month", "Facebook followers", "Average reach per Facebook post", "Facebook post views", "New Facebook follows", "TikTok video views"],
+               "rows": ["TikTok followers", "TikTok reach", "TikTok engagements", "Total reach", "Unique people reached per month", "Reach per ₱1,000",
                         "Impressions per ₱1,000", "TikTok engagement per view"]},
               {"big": ["New follows per ₱1,000", "Engagements per ₱1,000", "Cost per engagement", "Cost per mille (CPM)"],
                "rows": ["Ad post engagements", "Ad engagement rate", "Click-through rate (CTR)", "Cost per click", "Cost per 1,000 reached", "Ad spend per month", "Average frequency",
                         "True frequency", "Facebook posts published", "TikTok videos posted", "Facebook engagement rate"]}]
-    # Some campaign- or video-based cards have a more accurate twin, so the deck shows only the twin when both exist: unique reach and total reach in place of the average
-    # monthly paid reach, true frequency in place of the average frequency, and the TikTok analytics engagement in place of the engagement per view of the videos.
+    # Some campaign- or video-based cards have a more accurate twin, so the deck shows only the twin when both exist: true frequency in place of the average frequency, and the TikTok analytics engagement in place of the engagement per view of the videos.
     # The dashboard still shows both. Empty this dict to bring the campaign-based cards back.
-    SUPERSEDED = {"Paid reach per month": ("Total reach", "Unique people reached per month"), "Average frequency": ("True frequency",), "TikTok engagement per view": ("TikTok engagements",)}
+    SUPERSEDED = {"Average frequency": ("True frequency",), "TikTok engagement per view": ("TikTok engagements",)}
     NAMES = {"Average reach per Facebook post": "Reach per Facebook post", "Unique people reached per month": "Unique reach per month"}   # the longest title wraps to two lines in a wider font; the speaker notes say it is an average
 
     def name(self, c):
         return self.NAMES.get(c["label"], c["label"])
 
-    TAGS = {"Facebook followers": "FACEBOOK PAGE", "New Facebook follows": "FACEBOOK PAGE", "Average reach per Facebook post": "FACEBOOK PAGE", "Facebook post views": "FACEBOOK PAGE", "TikTok video views": "TIKTOK",
+    TAGS = {"Average reach per month": "FACEBOOK ADS", "Facebook followers": "FACEBOOK PAGE", "New Facebook follows": "FACEBOOK PAGE", "Average reach per Facebook post": "FACEBOOK PAGE", "Facebook post views": "FACEBOOK PAGE", "TikTok video views": "TIKTOK",
             "New follows per ₱1,000": "FACEBOOK PAGE + ADS", "Engagements per ₱1,000": "FACEBOOK ADS", "Cost per engagement": "FACEBOOK ADS", "Cost per mille (CPM)": "FACEBOOK ADS"}
 
     # --- primitives ---
@@ -693,10 +692,16 @@ class HalvesDeck(Deck):
         fol, rpp, ttv = by.get("Facebook followers") or by.get("New Facebook follows"), by.get("Average reach per Facebook post"), by.get("TikTok video views")
         lead = [c for c in (fol, rpp, ttv) if c and up(c)]
         names = {"Facebook followers": "Facebook followers", "New Facebook follows": "new Facebook follows", "Average reach per Facebook post": "reach per Facebook post", "TikTok video views": "TikTok video views"}
-        if len(lead) >= 2:
-            sub = f"The audience and the content's reach grew: " + ", ".join(f"{names[c['label']]} {mv(c)}" for c in lead[:-1]) + f" and {names[lead[-1]['label']]} {mv(lead[-1])} {vs}."
+        avg = by.get("Average reach per month")
+        if avg and avg["compared"] and not pd.isna(avg["b"]) and change(avg["b"], avg["a"]) is not None:
+            _c = change(avg["b"], avg["a"])
+            tail = (f", with average ad reach holding at {num(avg['b'])} a month" if abs(_c) < 0.02 else f", with average ad reach per month {mv(avg)} to {num(avg['b'])}")
         else:
-            sub = f"How far content travelled on Facebook and TikTok {vs}."
+            tail = ""
+        if len(lead) >= 2:
+            sub = f"The audience and the content's reach grew: " + ", ".join(f"{names[c['label']]} {mv(c)}" for c in lead[:-1]) + f" and {names[lead[-1]['label']]} {mv(lead[-1])}{tail} {vs}."
+        else:
+            sub = f"How far content travelled on Facebook and TikTok{tail} {vs}."
         posts, vids = by.get("Facebook posts published"), by.get("TikTok videos posted")
         counts = (f"{int(posts['a'] + posts['b'])} Facebook posts and {int(vids['a'] + vids['b'])} TikTok videos, " if posts and vids else "")
         foot = (f"Source: BPP Content SSoT 2025–2026, TikTok Studio and Meta Business Suite; {counts}{R['a_rng']} and {R['b_rng']}. Reach per post and views are lifetime figures of the posts "
@@ -719,7 +724,7 @@ class HalvesDeck(Deck):
                  "Post views and TikTok video views are totals for the period. Reach per ₱1,000 still uses campaign reach from Ads Manager, which adds up campaigns, so the number of different people is lower. "
                  "Reach and impressions per ₱1,000 show how much distribution each ₱1,000 of ad spend bought. TikTok engagement per view is likes, comments and shares divided by views.")
         table_h = 1.4
-        if self.R["layout"] != "halves" and len(rows) > 5:       # the cards and table layouts have no room for the note bar under that many cards: a short form joins the footnote
+        if (self.R["layout"] != "halves" and len(rows) > 5) or (self.R["layout"] == "halves" and len(big) + len(rows) > 12):    # no room for the note bar under that many cards: a short form joins the footnote
             foot += (" New follows are counted before unfollows" + (f"; the page gained {num(pg['net_follows'])} net followers over the whole period" if pg.get("net_follows") else "")
                      + ". Facebook page posts include boosted posts, so part of this reach is paid.")
             bar, table_h = None, 1.95

@@ -354,6 +354,9 @@ with tab_cmp:
     rp, pv, er = change(ob["reach_per_post"], oa["reach_per_post"]), change(ob["views"], oa["views"]), change(ob["er"], oa["er"])
     mv = lambda c: f"{'grew' if c >= 0 else 'fell'} {abs(c):.0%}"
     intro = []
+    if rc is not None and not pd.isna(ca["reach_avg"]):
+        _rg = f"{abs(rc):.1%} {'higher' if rc >= 0 else 'lower'} than" if abs(rc) >= 0.005 else "level with"
+        intro.append(f"Facebook ads reached an average of {num(cb['reach_avg'])} a month, {_rg} the {num(ca['reach_avg'])} of the {A_NAME.lower()}.")
     if None not in (rp, pv, er):
         intro.append(f"On the Facebook page, reach per post {mv(rp)} ({num(oa['reach_per_post'])} to {num(ob['reach_per_post'])}) and post views {mv(pv)}"
                      f"{', while' if (er < 0) != (min(rp, pv) < 0) else ', and'} the engagement rate {mv(er)} ({pct(oa['er'], 2)} to {pct(ob['er'], 2)}).")
@@ -409,6 +412,8 @@ with tab_cmp:
     _items[_ix["tt"]:_ix["tt"]] = _tt_items                              # TikTok figures after the TikTok video views, then Facebook followers before the reach per post
     if PF_OK("fb_followers"):
         _items.insert(_ix["fb"], _pf_item("fb_followers", "Followers of the Facebook page, figure of the whole period (supplied by the team). Higher is better."))
+    if not pd.isna(ca["reach_avg"]) and not pd.isna(cb["reach_avg"]):     # the monthly reach of the ads leads the section
+        _items.insert(0, ("Average reach per month", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, "Facebook ads: the monthly average of the campaign reach rows, so people who saw several campaigns are counted more than once. Higher is better.", None, None))
     with fl:
         st.markdown(f"**{A_TITLE}** · {A_RNG}")
         for k in range(0, len(_items), 2):
@@ -496,7 +501,7 @@ with tab_cmp:
     hr.caption(B_RNG)
     fa = lambda c: f"{c['frequency']:.2f}" if not pd.isna(c["frequency"]) else "n/a"
     er_m = lambda ser: [D.unit_costs(ADS, m, m)["er_impr"] for m in ser.index]   # monthly ad engagement rate, for the sparkline
-    _paid_rows = [("Reach (monthly average)", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, True, sa["reach"], sb["reach"], "Sum of the campaign reach rows, so people who saw several campaigns are counted more than once."),
+    _paid_rows = [("Average reach per month", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, True, sa["reach"], sb["reach"], "Sum of the campaign reach rows, so people who saw several campaigns are counted more than once."),
                   ("Ad engagement rate", pct(ua["er_impr"], 2), pct(ub["er_impr"], 2), change(ub["er_impr"], ua["er_impr"]), True, er_m(sa), er_m(sb),
                    "Post engagements / impressions of the Facebook ads. Higher is better."),
                   ("Cost per 1,000 reached", peso(ca["cpr"], 2), peso(cb["cpr"], 2), cc, False, sa["cpr"], sb["cpr"], "Ad spend / reach x 1,000. Lower is better."),
@@ -512,7 +517,7 @@ with tab_cmp:
         _paid_rows.append(("True frequency", f"{xa['frequency']:.2f}", f"{xb['frequency']:.2f}", change(xb["frequency"], xa["frequency"]), None,
                            _mser(sa, lambda r: r["impressions"] / r["reach"]), _mser(sb, lambda r: r["impressions"] / r["reach"]), "Impressions / unique reach over the month."))
     _after = lambda label, row: _paid_rows.insert(next(i for i, r in enumerate(_paid_rows) if r[0] == label) + 1, row)
-    _after("Reach (monthly average)", ("Total reach", num(ca["reach"]), num(cb["reach"]), change(cb["reach"], ca["reach"]), True, sa["reach"], sb["reach"],
+    _after("Average reach per month", ("Total reach", num(ca["reach"]), num(cb["reach"]), change(cb["reach"], ca["reach"]), True, sa["reach"], sb["reach"],
                                        "Sum of the monthly campaign reach over the period, so people who saw several campaigns or were reached in several months are counted more than once."))
     _after("Ad engagement rate", ("Ad post engagements", num(ua["engagements"]), num(ub["engagements"]), change(ub["engagements"], ua["engagements"]), True,
                                   [D.unit_costs(ADS, m, m)["engagements"] for m in sa.index], [D.unit_costs(ADS, m, m)["engagements"] for m in sb.index],
@@ -557,7 +562,7 @@ with tab_cmp:
             _row("Cost per 1,000 impressions (CPM)", ua["cpm"], ub["cpm"], change(ub["cpm"], ua["cpm"]), lambda v: peso(v, 2)),
             _row("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], change(ub["eng_per_k"], ua["eng_per_k"]), num),
             _row("Impressions per ₱1,000", ua["impr_per_k"], ub["impr_per_k"], change(ub["impr_per_k"], ua["impr_per_k"]), num),
-            _row("Reach (monthly average)", ca["reach_avg"], cb["reach_avg"], rc, num),
+            _row("Average reach per month", ca["reach_avg"], cb["reach_avg"], rc, num),
             _row("Ad engagement rate", ua["er_impr"], ub["er_impr"], change(ub["er_impr"], ua["er_impr"]), lambda v: pct(v, 2)),
             _row("Cost per 1,000 reached", ca["cpr"], cb["cpr"], cc, lambda v: peso(v, 2)),
             _row("Ad spend (total)", ca["spend"], cb["spend"], change(cb["spend"], ca["spend"]), peso),

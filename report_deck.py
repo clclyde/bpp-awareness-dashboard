@@ -147,11 +147,17 @@ def build_halves(S: dict, start: str, n: int, internal: bool, layout: str = "car
     last = D.last_full_month(ads, S["built_at"])
     if a0 + (2 * n - 1) > last:
         raise SystemExit(f"{n} + {n} months from {mlabel(a0)} run past the last full month ({mlabel(last)}).")
-    HC = D.half_cards(ads, posts, tt, a0, n)
+    HC = D.half_cards(ads, posts, tt, a0, n, S["acct"], S["follows"], S["tt_platform"])
+    for g in HC["groups"]:     # the follows per ₱1,000 card has no monthly series in data.py; the key card needs one for its sparkline
+        for row in g[1]:
+            for c in row:
+                if c["label"] == "New follows per ₱1,000" and len(S["follows"]):
+                    fm = dict(zip(S["follows"]["month"], S["follows"]["follows"].astype(float)))
+                    c["series"] = [D._div(fm[m] * 1000, D.paid(ads, m, m)["spend"]) for m in HC["months"]]
     (a0, a1), (b0, b1) = HC["a"], HC["b"]
     rng = lambda x, y: f"{mlabel(x)} to {mlabel(y)}"
     short_rng = lambda x, y: f"{x.strftime('%b')}–{mlabel(y)}" if x.year == y.year else f"{mlabel(x)}–{mlabel(y)}"   # Apr–Sep 2026, Oct 2025–Mar 2026
-    R = {"S": S, "HC": HC, "n": n, "internal": internal, "layout": layout, "a_rng": rng(a0, a1), "b_rng": rng(b0, b1), "a_short": short_rng(a0, a1), "b_short": short_rng(b0, b1),
+    R = {"S": S, "HC": HC, "n": n, "page": S["page"], "internal": internal, "layout": layout, "a_rng": rng(a0, a1), "b_rng": rng(b0, b1), "a_short": short_rng(a0, a1), "b_short": short_rng(b0, b1),
          "vs": f"first {n} months",
          "label": f"{rng(a0, a1)} vs {rng(b0, b1)}", "file": f"BPP_Awareness_Halves_{a0}_{n}m_{layout}"}
     return R
@@ -442,17 +448,28 @@ class HalvesDeck(Deck):
     CREAM, INK, TEAL, ORANGE, ASH, EDGE, SAGE = "F6F4EF", "1B2A34", "17695D", "B4480F", "4F5D66", "D9D5CA", "A9B8B3"
     TITLE = "Platform Distribution Level Up"
     X0, CW = 0.9, 11.55
-    KIND = {"num": (num, 0), "peso0": (peso, 0), "peso2": (lambda v: peso(v, 2), 2), "peso3": (lambda v: peso(v, 3), 3),
+    KIND = {"num": (num, 0), "num1": (lambda v: "n/a" if pd.isna(v) else f"{v:,.1f}", 1), "peso0": (peso, 0), "peso2": (lambda v: peso(v, 2), 2), "peso3": (lambda v: peso(v, 3), 3),
             "rate": (lambda v: pct(v, 2), 4), "freq": (lambda v: "n/a" if pd.isna(v) else f"{v:.2f}", 2)}
-    # big cards (with a monthly sparkline) and table rows of each slide; a card that is not listed (click-through rate and cost per click once clicks are loaded)
-    # is added to the table of the second slide, so nothing silently drops out
-    LAYOUT = [{"big": ["Average reach per Facebook post", "Facebook post views", "TikTok video views"],
-               "rows": ["Paid reach per month", "Reach per ₱1,000", "Impressions per ₱1,000", "TikTok engagement per view"]},
-              {"big": ["Engagements per ₱1,000", "Cost per engagement", "Cost per mille (CPM)"],
-               "rows": ["Ad engagement rate", "Cost per 1,000 reached", "Ad spend per month", "Average frequency",
-                        "Facebook posts published", "TikTok videos posted", "Facebook engagement rate"]}]
-    TAGS = {"Average reach per Facebook post": "FACEBOOK PAGE", "Facebook post views": "FACEBOOK PAGE", "TikTok video views": "TIKTOK",
-            "Engagements per ₱1,000": "FACEBOOK ADS", "Cost per engagement": "FACEBOOK ADS", "Cost per mille (CPM)": "FACEBOOK ADS"}
+    # big cards (with a monthly sparkline) and table rows of each slide. "big" lists candidates in order: the first three that exist become the key cards and the
+    # rest join the rows, so the deck still builds when follows are not loaded. A card that is not listed is added to the table of the second slide, so nothing
+    # silently drops out
+    LAYOUT = [{"big": ["Facebook followers", "Average reach per Facebook post", "Facebook post views", "New Facebook follows", "TikTok video views"],
+               "rows": ["TikTok followers", "TikTok reach", "TikTok engagements", "Total reach", "Paid reach per month", "Unique people reached per month", "Reach per ₱1,000",
+                        "Impressions per ₱1,000", "TikTok engagement per view"]},
+              {"big": ["New follows per ₱1,000", "Engagements per ₱1,000", "Cost per engagement", "Cost per mille (CPM)"],
+               "rows": ["Ad post engagements", "Ad engagement rate", "Click-through rate (CTR)", "Cost per click", "Cost per 1,000 reached", "Ad spend per month", "Average frequency",
+                        "True frequency", "Facebook posts published", "TikTok videos posted", "Facebook engagement rate"]}]
+    # Some campaign- or video-based cards have a more accurate twin, so the deck shows only the twin when both exist: unique reach and total reach in place of the average
+    # monthly paid reach, true frequency in place of the average frequency, and the TikTok analytics engagement in place of the engagement per view of the videos.
+    # The dashboard still shows both. Empty this dict to bring the campaign-based cards back.
+    SUPERSEDED = {"Paid reach per month": ("Total reach", "Unique people reached per month"), "Average frequency": ("True frequency",), "TikTok engagement per view": ("TikTok engagements",)}
+    NAMES = {"Average reach per Facebook post": "Reach per Facebook post", "Unique people reached per month": "Unique reach per month"}   # the longest title wraps to two lines in a wider font; the speaker notes say it is an average
+
+    def name(self, c):
+        return self.NAMES.get(c["label"], c["label"])
+
+    TAGS = {"Facebook followers": "FACEBOOK PAGE", "New Facebook follows": "FACEBOOK PAGE", "Average reach per Facebook post": "FACEBOOK PAGE", "Facebook post views": "FACEBOOK PAGE", "TikTok video views": "TIKTOK",
+            "New follows per ₱1,000": "FACEBOOK PAGE + ADS", "Engagements per ₱1,000": "FACEBOOK ADS", "Cost per engagement": "FACEBOOK ADS", "Cost per mille (CPM)": "FACEBOOK ADS"}
 
     # --- primitives ---
     def box(self, s, x, y, w, h, fill, line=None, adj=0.04):
@@ -499,24 +516,40 @@ class HalvesDeck(Deck):
         return ("+" if d >= 0 else "−") + (f"{abs(d) * 100:.2f} pts" if c["kind"] == "rate" else fmt(abs(d)))
 
     def sparkline(self, s, x, y, w, h, vals):
-        """Monthly values of both periods; the second line starts at the first period's last month so the two join."""
+        """Monthly values of both periods, drawn as plain shapes (a line per period and a dot per month) instead of a chart: Google Slides shows the axes of an
+        imported chart even when they are hidden, and shapes look the same in PowerPoint, Google Slides and Keynote. The second line starts at the first
+        period's last month so the two join."""
         n = len(vals) // 2
-        cd = CategoryChartData()
-        cd.categories = [m.strftime("%b %y") for m in self.R["HC"]["months"]]
-        f = lambda v: None if (v is None or pd.isna(v)) else float(v)
-        cd.add_series("First period", [f(v) if i <= n - 1 else None for i, v in enumerate(vals)])
-        cd.add_series("Second period", [f(v) if i >= n - 1 else None for i, v in enumerate(vals)])
-        ch = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(x), Inches(y), Inches(w), Inches(h), cd).chart
-        ch.has_title = False
-        ch.has_legend = False
-        ch.value_axis.visible = False
-        ch.value_axis.has_major_gridlines = False
-        ch.category_axis.visible = False
-        for ser, colour in zip(ch.plots[0].series, (self.SAGE, self.TEAL)):
-            ser.smooth = False
-            ser.format.line.color.rgb = rgb(colour); ser.format.line.width = Pt(2)
-            ser.marker.style, ser.marker.size = XL_MARKER_STYLE.CIRCLE, 5
-            ser.marker.format.fill.solid(); ser.marker.format.fill.fore_color.rgb = rgb(colour); ser.marker.format.line.color.rgb = rgb(colour)
+        pts = [(i, float(v)) for i, v in enumerate(vals) if v is not None and not pd.isna(v)]
+        if len(pts) < 2:
+            return
+        lo, hi = min(v for _, v in pts), max(v for _, v in pts)
+        span = (hi - lo) or 1.0
+        pad, r = 0.07, 0.035
+        grp = s.shapes.add_group_shape()    # one object per sparkline, so it moves as a piece when edited
+        px = lambda i: x + pad + (w - 2 * pad) * i / (len(vals) - 1)
+        py = lambda v: y + pad + (h - 2 * pad) * (1 - (v - lo) / span)
+        for a, b, colour in ((0, n - 1, self.SAGE), (n - 1, len(vals) - 1, self.TEAL)):
+            seg = [(i, v) for i, v in pts if a <= i <= b]
+            if len(seg) < 2:
+                continue
+            fb = grp.shapes.build_freeform(Inches(px(seg[0][0])), Inches(py(seg[0][1])))
+            fb.add_line_segments([(Inches(px(i)), Inches(py(v))) for i, v in seg[1:]], close=False)
+            line = fb.convert_to_shape()
+            line.fill.background()
+            line.line.color.rgb = rgb(colour); line.line.width = Pt(2)
+            line.shadow.inherit = False
+            st_ = line._element.find(qn("p:style"))
+            if st_ is not None:
+                line._element.remove(st_)
+        for i, v in pts:
+            dot = grp.shapes.add_shape(MSO_SHAPE.OVAL, Inches(px(i) - r), Inches(py(v) - r), Inches(2 * r), Inches(2 * r))
+            dot.fill.solid(); dot.fill.fore_color.rgb = rgb(self.SAGE if i < n else self.TEAL)
+            dot.line.fill.background()
+            dot.shadow.inherit = False
+            st_ = dot._element.find(qn("p:style"))
+            if st_ is not None:
+                dot._element.remove(st_)
 
     # --- page pieces ---
     def page(self, subtitle, source):
@@ -525,7 +558,8 @@ class HalvesDeck(Deck):
         s.background.fill.fore_color.rgb = rgb(self.CREAM)
         self.text(s, self.TITLE, self.X0, 0.5, self.CW, 0.6, 28, True, self.INK)
         self.text(s, subtitle, self.X0, 1.12, self.CW, 0.55, 13, color=self.ASH)
-        self.text(s, source, self.X0, 6.88, self.CW, 0.45, 10, color=self.ASH)
+        long = len(source) > 520
+        self.text(s, source, self.X0, 6.8 if long else 6.88, self.CW, 0.55 if long else 0.45, 9 if long else 10, color=self.ASH)
         return s
 
     def big_card(self, s, x, y, w, h, c, compact=False):
@@ -537,7 +571,7 @@ class HalvesDeck(Deck):
         ny, size, py = (0.78, 30, 1.34) if compact else (0.84, 34, 1.5)
         if c["label"] in self.TAGS:
             self.text(s, self.TAGS[c["label"]], x + pad, y + 0.14, w - 2 * pad, 0.2, 10.5, True, self.TEAL)
-        self.text(s, c["label"], x + pad, y + 0.34 if compact else y + 0.37, w - 2 * pad, 0.5, 15, True, self.INK)
+        self.text(s, self.name(c), x + pad, y + 0.34 if compact else y + 0.37, w - 2 * pad, 0.5, 15, True, self.INK)
         t = self.tone(c)
         self.text(s, fmt(c["b"]), x + pad, y + ny, w - 2 * pad, 0.6, size, True, self.INK if t == self.ASH else t)
         py += y
@@ -555,19 +589,22 @@ class HalvesDeck(Deck):
         tight=True is for five cards in a row (smaller type), used when more cards than usual have to share the slide."""
         self.box(s, x, y, w, h, WHITE, self.EDGE)
         fmt, _ = self.KIND[c["kind"]]
-        pad = 0.18 if tight else 0.2
-        k = len(c["label"])
-        if tight:
+        six = tight == 6
+        pad = 0.14 if six else (0.18 if tight else 0.2)
+        k = len(self.name(c))
+        if six:
+            size = 9.5
+        elif tight:
             size = 10.5 if k <= 18 else 9.5
         else:
             size = 12 if k <= 20 else (11 if k <= 24 else 10.5)
-        self.text(s, c["label"], x + pad, y + 0.12, w - 2 * pad, 0.24, size, True, self.INK)
+        self.text(s, self.name(c), x + pad, y + 0.12, w - 2 * pad, 0.24, size, True, self.INK)
         t = self.tone(c)
-        self.text(s, fmt(c["b"]), x + pad, y + 0.36, w - 2 * pad, 0.45, 22 if tight else 24, True, self.INK if t == self.ASH else t)
+        self.text(s, fmt(c["b"]), x + pad, y + 0.36, w - 2 * pad, 0.45, 20 if six else (22 if tight else 24), True, self.INK if t == self.ASH else t)
         py = y + 0.86
-        pw = 0.085 * len(self.pill_text(c)) + 0.28
-        self.pill(s, x + pad, py, pw, 0.27, c, 10.5 if tight else 11)
-        vsz = 11 if tight else 12
+        pw = (0.07 if six else 0.085) * len(self.pill_text(c)) + (0.2 if six else 0.28)
+        self.pill(s, x + pad, py, pw, 0.27, c, 9 if six else (10.5 if tight else 11))
+        vsz = 9 if six else (11 if tight else 12)
         tb = self.text(s, "vs ", x + pad + pw + 0.1, py, w - 2 * pad - pw - 0.1, 0.27, vsz, False, self.INK, anchor=MSO_ANCHOR.MIDDLE)
         self.run(tb.text_frame.paragraphs[0], fmt(c["a"]), vsz, True, self.INK)
 
@@ -584,7 +621,7 @@ class HalvesDeck(Deck):
             r, col = divmod(i, cols)
             cx, cy = x + 0.25 + col * cw, y + 0.8 + r * row_h
             fmt, _ = self.KIND[c["kind"]]
-            self.text(s, c["label"], cx, cy, cw - 0.12, 0.4 if stack else 0.22, 10.5 if stack else 11, False, self.ASH)
+            self.text(s, self.name(c), cx, cy, cw - 0.12, 0.4 if stack else 0.22, 10.5 if stack else 11, False, self.ASH)
             t = self.tone(c)
             size, ny = (22, 0.38) if stack else (20, 0.2)
             self.text(s, fmt(c["b"] if second else c["a"]), cx, cy + ny, cw - 0.1, 0.45, size, True, t if (second and t != self.ASH) else self.INK)
@@ -616,7 +653,7 @@ class HalvesDeck(Deck):
             fmt = fmt_of(c)
             t = self.tone(c)
             mid = MSO_ANCHOR.MIDDLE
-            self.text(s, c["label"], cols["name"], ry, 4.2, rh, 13, True, self.INK, anchor=mid)
+            self.text(s, self.name(c), cols["name"], ry, 4.2, rh, 13, True, self.INK, anchor=mid)
             self.text(s, fmt(c["b"]), cols["val"], ry, 1.7, rh, 14, True, self.INK if t == self.ASH else t, anchor=mid)
             ph = min(0.24, rh - 0.04)
             self.pill(s, cols["chg"], ry + (rh - ph) / 2, 1.2, ph, c, 11)
@@ -627,9 +664,9 @@ class HalvesDeck(Deck):
 
     def bar(self, s, y, label, text):
         """The dark note bar of the reference deck: a bold lead-in word and one sentence."""
-        self.box(s, self.X0, y, self.CW, 0.5, self.INK, adj=0.3)
-        tb = self.text(s, f"{label} ", self.X0 + 0.25, y, self.CW - 0.5, 0.5, 13, True, WHITE, anchor=MSO_ANCHOR.MIDDLE)
-        self.run(tb.text_frame.paragraphs[0], text, 13, False, WHITE)
+        self.box(s, self.X0, y, self.CW, 0.58, self.INK, adj=0.25)
+        tb = self.text(s, f"{label} ", self.X0 + 0.25, y, self.CW - 0.5, 0.58, 12, True, WHITE, anchor=MSO_ANCHOR.MIDDLE)
+        self.run(tb.text_frame.paragraphs[0], text, 12, False, WHITE)
 
     @staticmethod
     def notes(s, text):
@@ -645,46 +682,73 @@ class HalvesDeck(Deck):
         vs = f"({R['b_short']} vs {R['a_short']})"
         up = lambda c: c["compared"] and (change(c["b"], c["a"]) or 0) > 0
 
-        # slide 1: how far the content travelled
-        big = [by[l] for l in self.LAYOUT[0]["big"] if l in by]
-        rows = [by[l] for l in self.LAYOUT[0]["rows"] if l in by]
-        if len(big) == 3 and all(up(c) for c in big):
-            sub = f"Content travelled further on both platforms: reach per Facebook post {mv(big[0])} and TikTok video views {mv(big[2])} {vs}."
+        def pick(i):
+            """The first three candidates are the key cards; the other candidates and the listed rows follow as small cards or table rows."""
+            cand = [by[l] for l in self.LAYOUT[i]["big"] if l in by]
+            rows = [by[l] for l in self.LAYOUT[i]["rows"] if l in by and not any(t in by for t in self.SUPERSEDED.get(l, ()))]
+            return cand[:3], cand[3:] + rows
+
+        # slide 1: how far the content travelled and how many people followed
+        big, rows = pick(0)
+        fol, rpp, ttv = by.get("Facebook followers") or by.get("New Facebook follows"), by.get("Average reach per Facebook post"), by.get("TikTok video views")
+        lead = [c for c in (fol, rpp, ttv) if c and up(c)]
+        names = {"Facebook followers": "Facebook followers", "New Facebook follows": "new Facebook follows", "Average reach per Facebook post": "reach per Facebook post", "TikTok video views": "TikTok video views"}
+        if len(lead) >= 2:
+            sub = f"The audience and the content's reach grew: " + ", ".join(f"{names[c['label']]} {mv(c)}" for c in lead[:-1]) + f" and {names[lead[-1]['label']]} {mv(lead[-1])} {vs}."
         else:
             sub = f"How far content travelled on Facebook and TikTok {vs}."
         posts, vids = by.get("Facebook posts published"), by.get("TikTok videos posted")
         counts = (f"{int(posts['a'] + posts['b'])} Facebook posts and {int(vids['a'] + vids['b'])} TikTok videos, " if posts and vids else "")
-        foot = f"Source: BPP Content SSoT 2025–2026 and TikTok Studio; {counts}{R['a_rng']} and {R['b_rng']}. Reach per post and views are lifetime figures of the posts published in each period."
-        pr, sp = by.get("Paid reach per month"), by.get("Ad spend per month")
-        bar = None
-        if pr and sp and pr["compared"] and sp["compared"]:
-            bar = ("Note:", f"Facebook page posts include boosted posts, so part of this reach is paid. Paid reach per month is {mv(pr)} on ad spend per month {mv(sp)}.")
+        foot = (f"Source: BPP Content SSoT 2025–2026, TikTok Studio and Meta Business Suite; {counts}{R['a_rng']} and {R['b_rng']}. Reach per post and views are lifetime figures of the posts "
+                "published in each period. Unique reach is Meta's account-level monthly figure; total reach sums the monthly campaign reach, so people reached more than once count each time.")
+        plat = any(l in by for l in ("Facebook followers", "TikTok followers", "TikTok reach", "TikTok engagements"))
+        if plat:
+            foot += " Followers, TikTok reach and TikTok engagements are the platforms' own figures for each period, not sums of posts or videos."
+        pg = R.get("page") or {}
+        whole = ((f"Over the whole period the page gained {num(pg['net_follows'])} net followers. " if "Facebook followers" in by else
+                  f"Over the whole period the page gained {num(pg['net_follows'])} net followers and has {num(pg['followers_lifetime'])} in total. ")
+                 if pg.get("net_follows") and pg.get("followers_lifetime") else "")
+        bar = ("Note:", (f"New follows are counted before unfollows. {whole}" if fol else "") + "Facebook page posts include boosted posts, so part of this reach is paid.")
         notes = (f"How to read each card: the big number is the latest {n} months ({R['b_rng']}); the filled pill is the change against the first {n} months ({R['a_rng']}), "
                  "green when it got better, orange when it got worse, grey when it is about the same (within 2%) or neither better nor worse; the line underneath is the previous number. "
                  f"The small chart, where there is one, shows each month: the first {n} months in light green and the next {n} in dark green.\n\n"
-                 "Reach per Facebook post is the average reach of the posts published in the period (lifetime numbers as exported); Facebook page posts include boosted posts. "
-                 "Post views and TikTok video views are totals for the period. Paid reach adds up campaign reach in Ads Manager, so the number of different people is lower. "
+                 "Facebook followers, TikTok followers, TikTok reach and TikTok engagements are the platforms' own figures for each period, supplied by the team (they are not sums of posts or videos, and TikTok reach is not the same as TikTok video views). "
+                 "New Facebook follows is the total of the daily new follows in Meta Business Suite for the months of the period. It is counted before unfollows: unfollows are only known for the whole year, "
+                 "so net new followers per period cannot be shown. Total reach adds up the monthly campaign reach of the Facebook ads, so people reached in several months or by several campaigns are counted each time. "
+                 "Unique reach per month is Meta's own count of different people the ads reached in a month (account-level report), averaged over the period. Reach per Facebook post is the average reach of the posts published in the period (lifetime numbers as exported); Facebook page posts include boosted posts. "
+                 "Post views and TikTok video views are totals for the period. Reach per ₱1,000 still uses campaign reach from Ads Manager, which adds up campaigns, so the number of different people is lower. "
                  "Reach and impressions per ₱1,000 show how much distribution each ₱1,000 of ad spend bought. TikTok engagement per view is likes, comments and shares divided by views.")
-        out = [dict(big=big, rows=rows, sub=sub, foot=foot, bar=bar, notes=notes, stack=True, table_h=1.4)]
+        table_h = 1.4
+        if self.R["layout"] != "halves" and len(rows) > 5:       # the cards and table layouts have no room for the note bar under that many cards: a short form joins the footnote
+            foot += (" New follows are counted before unfollows" + (f"; the page gained {num(pg['net_follows'])} net followers over the whole period" if pg.get("net_follows") else "")
+                     + ". Facebook page posts include boosted posts, so part of this reach is paid.")
+            bar, table_h = None, 1.95
+        out = [dict(big=big, rows=rows, sub=sub, foot=foot, bar=bar, notes=notes, stack=True, table_h=table_h)]
 
         # slide 2: what each peso delivered, and how much we posted
-        big = [by[l] for l in self.LAYOUT[1]["big"] if l in by]
-        rows = [by[l] for l in self.LAYOUT[1]["rows"] if l in by]
-        rows[1:1] = extras
-        eng, cpe = by.get("Engagements per ₱1,000"), by.get("Cost per engagement")
+        big, rows = pick(1)
+        rows[0:0] = extras
+        fpk, eng, cpe = by.get("New follows per ₱1,000"), by.get("Engagements per ₱1,000"), by.get("Cost per engagement")
         if eng and cpe and change(eng["b"], eng["a"]) > 0 and change(cpe["b"], cpe["a"]) < 0:
-            sub = f"Each peso of ad spend delivered more: engagements per ₱1,000 {mv(eng)} and cost per engagement {mv(cpe)} {vs}."
+            parts = ([f"new follows per ₱1,000 {mv(fpk)}"] if fpk and up(fpk) else []) + [f"engagements per ₱1,000 {mv(eng)}"]
+            sub = f"Each peso of ad spend delivered more: {', '.join(parts)} and cost per engagement {mv(cpe)} {vs}."
         else:
             sub = f"What each peso of ad spend delivered, and how much we posted {vs}."
         worse = [c for c in rows if c["better"] is True and c["compared"] and (change(c["b"], c["a"]) or 0) < -0.02]
         if worse:   # the orange figures, said once in words so the headline does not read as all good news
             sub += f" {len(worse)} of the figures below went down."
-        foot = "Source: Facebook Ads Manager monthly exports, ad spend ex-VAT. Reach adds up campaign reach, so the number of different people is lower. The difference of a rate is in percentage points (pts)."
+        foot = ("Source: Facebook Ads Manager monthly exports, ad spend ex-VAT; click-through rate, cost per click and true frequency use Meta's account-level monthly totals. "
+                "Reach per ₱1,000 and cost per 1,000 reached use campaign reach, which adds up people who saw several campaigns. New follows per ₱1,000 is all new page follows "
+                "(Meta Business Suite, before unfollows) divided by Facebook ad spend, so it includes follows that did not come from ads. Ad post engagements are the post engagements of the Facebook ads as counted by Ads Manager. "
+                "The difference of a rate is in percentage points (pts).")
         if R["internal"]:
-            foot += " INTERNAL: the Feb and May 2026 exports are incomplete, so spend and reach for those months are understated."
-        notes = ("Same reading as the previous slide. Engagements per ₱1,000 and impressions per ₱1,000 are what each ₱1,000 of Facebook ad spend bought (higher is better). "
+            foot += (" INTERNAL: the daily follows total is about 4% above what Meta's whole-period audience figures imply (unexplained); treat new follows as approximate.")
+        notes = ("Same reading as the previous slide. New follows per ₱1,000, engagements per ₱1,000 and impressions per ₱1,000 are what each ₱1,000 of Facebook ad spend bought (higher is better). "
+                 "New follows per ₱1,000 divides all new page follows, organic and paid, by Facebook ad spend, so it is not the cost of a follower from ads. "
+                 "Ad post engagements is the total number of post engagements of the Facebook ads as counted by Ads Manager. "
                  "Cost per engagement, cost per mille (CPM, cost per 1,000 impressions) and cost per 1,000 reached are what each result cost (lower is better). "
-                 "Ad engagement rate is post engagements divided by impressions. Ad spend per month and average frequency are context, not good or bad, so they stay grey. "
+                 "Ad engagement rate is post engagements divided by impressions. Click-through rate is clicks divided by impressions and cost per click is spend divided by clicks, both from Meta's account-level monthly totals. "
+                 "True frequency is impressions divided by unique reach. Ad spend per month and true frequency are context, not good or bad, so they stay grey. "
                  "Facebook posts published and TikTok videos posted show how much we posted; the Facebook engagement rate is engagements divided by reach of the page posts.")
         watch = ("Down:", ", ".join(c["label"] for c in worse) + ".") if worse else None
         out.append(dict(big=big, rows=rows, sub=sub, foot=foot, bar=None, watch=watch, notes=notes, stack=False, table_h=1.95))
@@ -694,9 +758,10 @@ class HalvesDeck(Deck):
     def draw_table(self, s, sp):
         """Three key cards, then the other figures as table rows."""
         cw = (self.CW - 0.46) / 3
+        bh = 2.4 if sp["bar"] else 2.62      # a slide with a note bar has less room: smaller key cards keep the bar clear of the source line
         for i, c in enumerate(sp["big"]):
-            self.big_card(s, self.X0 + i * (cw + 0.23), 1.75, cw, 2.62, c)
-        y = self.table(s, 4.52, sp["rows"], max_h=sp["table_h"])
+            self.big_card(s, self.X0 + i * (cw + 0.23), 1.75, cw, bh, c, compact=bool(sp["bar"]))
+        y = self.table(s, 1.75 + bh + 0.12 if sp["bar"] else 4.52, sp["rows"], max_h=sp["table_h"])
         if sp["bar"]:
             self.bar(s, y + 0.2, *sp["bar"])
 
@@ -706,11 +771,11 @@ class HalvesDeck(Deck):
         for i, c in enumerate(sp["big"]):
             self.big_card(s, self.X0 + i * (cw + 0.23), 1.72, cw, 2.4, c, compact=True)
         rows = sp["rows"]
-        cols = 5 if len(rows) > 8 else 4    # click-through rate and cost per click add two cards: five to a row keeps everything on the slide
+        cols = 6 if len(rows) > 10 else (5 if (len(rows) > 8 or len(rows) == 5) else 4)    # five (six when there are more than ten) to a row when a slide holds many small cards, so the rows stay even
         sw, y = (self.CW - 0.12 * (cols - 1)) / cols, 4.26
         for k in range(0, len(rows), cols):
             for i, c in enumerate(rows[k:k + cols]):
-                self.small_card(s, self.X0 + i * (sw + 0.12), y, sw, 1.2, c, tight=cols == 5)
+                self.small_card(s, self.X0 + i * (sw + 0.12), y, sw, 1.2, c, tight=6 if cols == 6 else cols == 5)
             y += 1.3
         if sp.get("watch") and len(rows) % cols:   # the free slot at the end of the last row: a dark card in the style of the reference deck
             i = len(rows) % cols
@@ -726,10 +791,11 @@ class HalvesDeck(Deck):
         n, R = self.R["n"], self.R
         cards = sp["big"] + sp["rows"]
         pw = (self.CW - 0.3) / 2
-        rows_n = -(-len(cards) // (3 if sp["stack"] else 2))
-        row_h = 1.15 if sp["stack"] else min(0.78, (6.65 - 1.75 - 0.92) / rows_n)   # more metrics (click-through rate, cost per click) squeeze the rows
-        y = self.half_panel(s, self.X0, 1.75, pw, row_h, f"FIRST {n} MONTHS", R["a_rng"], cards, False, sp["stack"])
-        self.half_panel(s, self.X0 + pw + 0.3, 1.75, pw, row_h, f"NEXT {n} MONTHS", R["b_rng"], cards, True, sp["stack"])
+        stack = sp["stack"] and len(cards) <= 9        # more than nine cards no longer fit three to a row with the pill under the number: use two columns with the pill beside it
+        rows_n = -(-len(cards) // (3 if stack else 2))
+        row_h = 1.15 if stack else min(0.78, (6.65 - 1.75 - 0.92 - (0.7 if sp["bar"] else 0)) / rows_n)   # more metrics squeeze the rows; a note bar needs its own room below
+        y = self.half_panel(s, self.X0, 1.75, pw, row_h, f"FIRST {n} MONTHS", R["a_rng"], cards, False, stack)
+        self.half_panel(s, self.X0 + pw + 0.3, 1.75, pw, row_h, f"NEXT {n} MONTHS", R["b_rng"], cards, True, stack)
         if sp["bar"]:
             self.bar(s, y + 0.12, *sp["bar"])
 

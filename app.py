@@ -346,6 +346,9 @@ with tab_cmp:
         _fm = dict(zip(S["follows"]["month"], S["follows"]["follows"].astype(float)))
         fol_a, fol_b = sum(_fm[m] for m in _cm[:N]), sum(_fm[m] for m in _cm[N:])
         ua["fol_per_k"], ub["fol_per_k"] = fol_a * 1000 / ca["spend"], fol_b * 1000 / cb["spend"]
+    # platform analytics figures of a whole period (Facebook followers, TikTok followers, reach, engagement): shown only when they were stored for exactly these two periods
+    PFA, PFB = D.platform_period(S["tt_platform"], A0, A1), D.platform_period(S["tt_platform"], B0, B1)
+    PF_OK = lambda k: k in PFA and k in PFB
     g = lambda k, a=ca, b=cb: change(b[k], a[k])
     rc, cc, sc = g("reach_avg"), g("cpr"), change(spm_b, spm_a)
     rp, pv, er = change(ob["reach_per_post"], oa["reach_per_post"]), change(ob["views"], oa["views"]), change(ob["er"], oa["er"])
@@ -400,6 +403,12 @@ with tab_cmp:
                 None if not _pb else ("TikTok video views: no data for this period." if _pb == "no months with data" else f"TikTok video views cover {_pb}.")),   # says outright that it is the TikTok views figure, not the whole box
                ("Posts published", num(oa["posts"]), num(ob["posts"]), change(ob["posts"], oa["posts"]), None, None, None),
                ("Engagement rate", pct(oa["er"], 2), pct(ob["er"], 2), change(ob["er"], oa["er"]), None, None, None)]
+    _pf_item = lambda k, hp: (D.PLATFORM_METRICS[k], num(PFA[k]), num(PFB[k]), change(PFB[k], PFA[k]), hp, None, None)
+    _ix = {"fb": next(i for i, it in enumerate(_items) if it[0] == "Average reach per post"), "tt": next(i for i, it in enumerate(_items) if it[0].startswith("TikTok video views")) + 1}
+    _tt_items = [_pf_item(k, "TikTok analytics, figure of the whole period (supplied by the team). Higher is better.") for k in ("tt_followers", "tt_reach", "tt_engagement") if PF_OK(k)]
+    _items[_ix["tt"]:_ix["tt"]] = _tt_items                              # TikTok figures after the TikTok video views, then Facebook followers before the reach per post
+    if PF_OK("fb_followers"):
+        _items.insert(_ix["fb"], _pf_item("fb_followers", "Followers of the Facebook page, figure of the whole period (supplied by the team). Higher is better."))
     with fl:
         st.markdown(f"**{A_TITLE}** · {A_RNG}")
         for k in range(0, len(_items), 2):
@@ -502,6 +511,12 @@ with tab_cmp:
                               _mser(sa, lambda r: r["clicks_all"] / r["impressions"]), _mser(sb, lambda r: r["clicks_all"] / r["impressions"]), "Clicks (all) / impressions. Higher is better."))
         _paid_rows.append(("True frequency", f"{xa['frequency']:.2f}", f"{xb['frequency']:.2f}", change(xb["frequency"], xa["frequency"]), None,
                            _mser(sa, lambda r: r["impressions"] / r["reach"]), _mser(sb, lambda r: r["impressions"] / r["reach"]), "Impressions / unique reach over the month."))
+    _after = lambda label, row: _paid_rows.insert(next(i for i, r in enumerate(_paid_rows) if r[0] == label) + 1, row)
+    _after("Reach (monthly average)", ("Total reach", num(ca["reach"]), num(cb["reach"]), change(cb["reach"], ca["reach"]), True, sa["reach"], sb["reach"],
+                                       "Sum of the monthly campaign reach over the period, so people who saw several campaigns or were reached in several months are counted more than once."))
+    _after("Ad engagement rate", ("Ad post engagements", num(ua["engagements"]), num(ub["engagements"]), change(ub["engagements"], ua["engagements"]), True,
+                                  [D.unit_costs(ADS, m, m)["engagements"] for m in sa.index], [D.unit_costs(ADS, m, m)["engagements"] for m in sb.index],
+                                  "Post engagements of the Facebook ads as counted by Ads Manager. Higher is better."))
     for label, va, vb, ch, better, sera, serb, hp in _paid_rows:
         ml, mr = box.columns(2, gap="large")
         with ml:
@@ -555,6 +570,9 @@ with tab_cmp:
                  _row("True frequency", xa["frequency"], xb["frequency"], change(xb["frequency"], xa["frequency"]), lambda v: f"{v:.2f}"),
                  _row("Click-through rate", xa["ctr"], xb["ctr"], change(xb["ctr"], xa["ctr"]), lambda v: pct(v, 2)),
                  _row("Cost per click", xa["cpc"], xb["cpc"], change(xb["cpc"], xa["cpc"]), lambda v: peso(v, 2))]
+    rows += [_row("Total reach", ca["reach"], cb["reach"], change(cb["reach"], ca["reach"]), num),
+             _row("Ad post engagements", ua["engagements"], ub["engagements"], change(ub["engagements"], ua["engagements"]), num)]
+    rows += [_row(D.PLATFORM_METRICS[k], PFA[k], PFB[k], change(PFB[k], PFA[k]), num) for k in D.PLATFORM_METRICS if PF_OK(k)]
     with st.expander("All figures side by side", icon=":material/table:"):
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     st.caption("Change is the second period against the first. For cost per 1,000 reached and frequency, lower is better. Awareness is reported as delivery and cost: reach measures exposure, not recall.")
@@ -578,7 +596,7 @@ with tab_cards:
     st.caption("Green means better for BPP, red means worse, grey means about the same (within 2%). Arrows show the direction: for costs, down is better. "
                "The small charts show each month, the first period in grey and the second in blue; hover for the values.")
 
-    HC = D.half_cards(ADS, POSTS, TT, KA0, KN, S["acct"], S["follows"])   # the same cards, in the same order, as the deck (report_deck.py --halves)
+    HC = D.half_cards(ADS, POSTS, TT, KA0, KN, S["acct"], S["follows"], S["tt_platform"])   # the same cards, in the same order, as the deck (report_deck.py --halves)
     f2 = lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"
     pts = lambda v: f"{abs(v) * 100:.2f} pts"    # change of a rate, in percentage points
     KINDS = {"num": (num, signed(num), 0, "%{y:,.0f}"), "peso0": (peso, signed(peso), 0, "₱%{y:,.0f}"),
@@ -595,9 +613,18 @@ with tab_cards:
                              note=None if c["compared"] else "Not compared: the data does not cover every month of both periods",
                              series=(KMONTHS, c["series"], hover) if c["series"] is not None else None,
                              flags=GAPS if (INTERNAL and c["paid_series"]) else None, key="kc_" + c["label"])
+        if title == "Audience Growth" and any(c["label"] in D.PLATFORM_METRICS.values() for r_ in rows_ for c in r_):
+            st.caption("Facebook followers, TikTok followers, TikTok reach and TikTok engagements are figures of the whole period from the platforms' analytics, supplied by the team; "
+                       "they are not sums of posts or videos. TikTok video views and engagement per view are summed from the videos posted in each period.")
+            if INTERNAL:
+                st.caption("Internal: the source and exact definition of these four figures (period-end follower totals? TikTok reach as unique viewers?) are still to be confirmed with the person who supplied them.")
         if title == "Audience Growth" and "followers_lifetime" in S["page"]:
-            st.caption(f"Over the whole period (Sep 2025 to Sep 2026) the page gained {S['page'].get('net_follows', float('nan')):,.0f} net followers and has {S['page']['followers_lifetime']:,.0f} followers in total "
-                       "(Meta Business Suite). The new-follows cards count follows before unfollows.")
+            _fb_end = any(c["label"] == "Facebook followers" for r_ in rows_ for c in r_)     # the supplied period figure replaces Business Suite's lifetime total, so the two are not shown side by side
+            st.caption(f"Over the whole period (Sep 2025 to Sep 2026) the page gained {S['page'].get('net_follows', float('nan')):,.0f} net followers"
+                       + ("" if _fb_end else f" and has {S['page']['followers_lifetime']:,.0f} followers in total") + " (Meta Business Suite). The new-follows cards count follows before unfollows.")
+            if INTERNAL and _fb_end:
+                st.caption(f"Internal: Business Suite shows {S['page']['followers_lifetime']:,.0f} lifetime followers, while the supplied Facebook followers figure for the end of the second period is different "
+                           "(timing or definition not confirmed).")
             if INTERNAL:
                 _csv, _screen = S["follows"]["follows"].sum(), S["page"].get("net_follows", 0) + S["page"].get("unfollows", 0)
                 st.caption(f"Internal: unfollows are only known for the whole period ({S['page'].get('unfollows', float('nan')):,.0f}), so net new followers and follower growth per period cannot be computed. "

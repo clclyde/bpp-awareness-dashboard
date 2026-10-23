@@ -27,6 +27,18 @@ def snapshot_exists() -> bool:
     return SNAPSHOT.exists()
 
 
+PLATFORM_METRICS = {"fb_followers": "Facebook followers", "tt_followers": "TikTok followers", "tt_reach": "TikTok reach", "tt_engagement": "TikTok engagements"}
+
+
+def platform_period(tt_platform, m0, m1) -> dict:
+    """TikTok analytics figures whose period is exactly the months m0..m1 (first day of m0 to last day of m1): {metric: value}. Empty when the periods do not match."""
+    if tt_platform is None or len(tt_platform) == 0:
+        return {}
+    start, end = m0.start_time.normalize(), m1.end_time.normalize()
+    d = tt_platform[(tt_platform["start"] == start) & (tt_platform["end"] == end)]
+    return {r.metric: float(r.value) for r in d.itertuples() if pd.notna(r.value)}
+
+
 def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None, page=None) -> dict:
     """Same typing and derived columns whether the rows come from Supabase or from the snapshot."""
     ads, posts, tt = ads.copy(), posts.copy(), tt.copy()
@@ -55,7 +67,10 @@ def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None, page=None) -> d
     follows["month"] = pd.to_datetime(follows["start"]).dt.to_period("M")
     follows = follows.rename(columns={"value": "follows"})[["month", "follows"]].sort_values("month").reset_index(drop=True)
     page_ctx = {r.metric: float(r.value) for r in page[page["metric"].isin(["followers_lifetime", "net_follows", "unfollows"])].itertuples()}
-    return {"ads": ads, "acct": acct, "follows": follows, "page": page_ctx, "posts": posts, "tiktok": tt, "ref": {pd.Period(k, "M"): float(v) for k, v in ref.items()},
+    # Platform analytics figures of a whole period (Facebook followers, TikTok followers, reach, engagement), supplied by the team: they are not sums of videos and cannot be split by month
+    tt_platform = page[page["metric"].isin(PLATFORM_METRICS)][["metric", "start", "end", "value"]].copy()
+    tt_platform["start"], tt_platform["end"] = pd.to_datetime(tt_platform["start"]), pd.to_datetime(tt_platform["end"])
+    return {"ads": ads, "acct": acct, "follows": follows, "page": page_ctx, "tt_platform": tt_platform, "posts": posts, "tiktok": tt, "ref": {pd.Period(k, "M"): float(v) for k, v in ref.items()},
             "ref_tt": {pd.Period(k, "M"): float(v) for k, v in (ref_tt or {}).items()}, "built_at": built_at, "source": source}
 
 
@@ -179,7 +194,7 @@ def unit_costs(ads, m0, m1) -> dict:
             "clicks_ok": clicks_ok, "tp_ok": tp_ok}
 
 
-def half_cards(ads, posts, tt, a0, n, acct=None, follows=None) -> dict:
+def half_cards(ads, posts, tt, a0, n, acct=None, follows=None, tt_platform=None) -> dict:
     """The KPI cards of the half vs half comparison: the first n months from a0 against the next n months.
     Used by the dashboard's KPI Cards tab and by the deck (report_deck.py --halves), so both show the same cards in the same order.
     Groups run from the strongest results to the context (agreed 2026-10-21, the report makes the case for renewing); each group is a list of rows.
@@ -189,7 +204,9 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None) -> dict:
     acct = Meta's account-level monthly totals (S["acct"]): they add unique reach per month, true frequency, click-through rate and cost per click, and only
     appear when every month of both periods has an account row.
     follows = new Facebook page follows per month (S["follows"], Business Suite, before unfollows): they add new follows and new follows per 1,000 of ad spend when every
-    month of both periods has a figure. Net new followers need unfollows per month, which are not available, so they are not computed."""
+    month of both periods has a figure. Net new followers need unfollows per month, which are not available, so they are not computed.
+    tt_platform = platform analytics figures of a whole period (S["tt_platform"]): Facebook followers and TikTok followers, reach and engagement appear as a third Audience Growth row only when the
+    stored periods are exactly the two periods compared (they cannot be split by month, so there is no sparkline)."""
     a1, b0, b1 = a0 + (n - 1), a0 + n, a0 + (2 * n - 1)
     months = [a0 + i for i in range(2 * n)]
     ca, cb = paid(ads, a0, a1), paid(ads, b0, b1)
@@ -222,15 +239,20 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None) -> dict:
         unique, true_freq = [], []
         clicks = [card("Click-through rate (CTR)", ua["ctr"], ub["ctr"], True, "rate", "clicks / impressions"),
                   card("Cost per click", ua["cpc"], ub["cpc"], False, "peso2", "lower is better")] if (ua["clicks_ok"] and ub["clicks_ok"]) else []
+    pa, pb = platform_period(tt_platform, a0, a1), platform_period(tt_platform, b0, b1)
+    platform = [card(PLATFORM_METRICS[k], pa[k], pb[k], True, "num", "platform analytics, figure of the whole period") for k in PLATFORM_METRICS if k in pa and k in pb]
     groups = [
         ("Audience Growth", [
             new_follows + [card("Average reach per Facebook post", oa["reach_per_post"], ob["reach_per_post"], True, "num", series=lambda m: organic(posts, m, m)["reach_per_post"]),
              card("Facebook post views", oa["views"], ob["views"], True, "num", series=lambda m: organic(posts, m, m)["views"]),
              card("TikTok video views", ta["views"], tb["views"], True, "num", series=lambda m: tiktok(tt, m, m)["views"], compared=tt_ok)],
-            [card("Paid reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads")] + unique
-            + [card("TikTok engagement per view", ta["eng_per_view"], tb["eng_per_view"], True, "rate", "likes, comments, shares / views", compared=tt_ok)]]),
+            [card("Paid reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads"),
+             card("Total reach", ca["reach"], cb["reach"], True, "num", "sum of the monthly campaign reach, Facebook ads", series=lambda m: paid(ads, m, m)["reach"], paid_series=True)] + unique
+            + [card("TikTok engagement per view", ta["eng_per_view"], tb["eng_per_view"], True, "rate", "likes, comments, shares / views", compared=tt_ok)]]
+            + ([platform] if platform else [])),
         ("More From Every Peso Spent", [
-            [card("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], True, "num", "higher is better", series=lambda m: unit_costs(ads, m, m)["eng_per_k"], paid_series=True),
+            [card("Ad post engagements", ua["engagements"], ub["engagements"], True, "num", "Facebook ads, as counted by Ads Manager", series=lambda m: unit_costs(ads, m, m)["engagements"], paid_series=True),
+             card("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], True, "num", "higher is better", series=lambda m: unit_costs(ads, m, m)["eng_per_k"], paid_series=True),
              card("Cost per engagement", ua["cpe"], ub["cpe"], False, "peso3", "lower is better", series=lambda m: unit_costs(ads, m, m)["cpe"], paid_series=True),
              card("Cost per mille (CPM)", ua["cpm"], ub["cpm"], False, "peso2", "lower is better", series=lambda m: unit_costs(ads, m, m)["cpm"], paid_series=True)],
             follows_per_k + [card("Ad engagement rate", ua["er_impr"], ub["er_impr"], True, "rate", "engagements / impressions"),

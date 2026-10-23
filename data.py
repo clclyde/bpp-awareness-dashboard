@@ -233,10 +233,13 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None, tt_platform=None)
         unique = [card("Unique people reached per month", xa["reach_avg"], xb["reach_avg"], True, "num", "Facebook ads, each person counted once a month",
                        series=lambda m: account_period(acct, m, m)["reach_avg"])]
         true_freq = [card("True frequency", xa["frequency"], xb["frequency"], None, "freq", "impressions / unique reach")]
+        ad_impr = [card("Ad impressions", xa["impressions"], xb["impressions"], True, "num", "Facebook ads, Meta's account totals (every time an ad was shown, repeats included)",
+                        series=lambda m: account_period(acct, m, m)["impressions"])]
         clicks = [card("Click-through rate (CTR)", xa["ctr"], xb["ctr"], True, "rate", "clicks / impressions"),
                   card("Cost per click", xa["cpc"], xb["cpc"], False, "peso2", "lower is better")]
     else:          # campaign exports only have clicks from Mar 2026
         unique, true_freq = [], []
+        ad_impr = [card("Ad impressions", ca["impressions"], cb["impressions"], True, "num", "Facebook ads, Ads Manager campaign rows", series=lambda m: paid(ads, m, m)["impressions"], paid_series=True)]
         clicks = [card("Click-through rate (CTR)", ua["ctr"], ub["ctr"], True, "rate", "clicks / impressions"),
                   card("Cost per click", ua["cpc"], ub["cpc"], False, "peso2", "lower is better")] if (ua["clicks_ok"] and ub["clicks_ok"]) else []
     pa, pb = platform_period(tt_platform, a0, a1), platform_period(tt_platform, b0, b1)
@@ -245,11 +248,10 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None, tt_platform=None)
         ("Audience Growth", [
             [card("Average reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads, monthly average of the campaign reach", series=lambda m: paid(ads, m, m)["reach"], paid_series=True)]
             + new_follows + [card("Average reach per Facebook post", oa["reach_per_post"], ob["reach_per_post"], True, "num", series=lambda m: organic(posts, m, m)["reach_per_post"]),
-             card("Facebook post views", oa["views"], ob["views"], True, "num", series=lambda m: organic(posts, m, m)["views"]),
+             card("Facebook post views (impressions)", oa["views"], ob["views"], True, "num", "Meta Views: every time a page post was shown or played, repeats included. Organic and boosted posts together. Not the number of people.", series=lambda m: organic(posts, m, m)["views"]),
              ],
             [card("TikTok video views", ta["views"], tb["views"], True, "num", series=lambda m: tiktok(tt, m, m)["views"], compared=tt_ok),
-             card("Total reach", ca["reach"], cb["reach"], True, "num", "sum of the monthly campaign reach, Facebook ads", series=lambda m: paid(ads, m, m)["reach"], paid_series=True)] + unique
-            + [card("TikTok engagement per view", ta["eng_per_view"], tb["eng_per_view"], True, "rate", "likes, comments, shares / views", compared=tt_ok)]]
+             card("Total reach", ca["reach"], cb["reach"], True, "num", "sum of the monthly campaign reach, Facebook ads", series=lambda m: paid(ads, m, m)["reach"], paid_series=True)] + ad_impr + unique]
             + ([platform] if platform else [])),
         ("More From Every Peso Spent", [
             [card("Ad post engagements", ua["engagements"], ub["engagements"], True, "num", "Facebook ads, as counted by Ads Manager", series=lambda m: unit_costs(ads, m, m)["engagements"], paid_series=True),
@@ -265,6 +267,7 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None, tt_platform=None)
              card("Average frequency", ca["frequency"], cb["frequency"], None, "freq", "impressions / reach")] + true_freq,
             [card("Facebook posts published", oa["posts"], ob["posts"], True, "num"),
              card("TikTok videos posted", ta["videos"], tb["videos"], True, "num", compared=tt_ok),
+             card("TikTok engagement per view", ta["eng_per_view"], tb["eng_per_view"], True, "rate", "likes, comments, shares / views", compared=tt_ok),
              card("Facebook engagement rate", oa["er"], ob["er"], True, "rate", "engagements / reach")]]),
     ]
     return {"a": (a0, a1), "b": (b0, b1), "months": months, "groups": groups, "clicks_ok": acct_ok or (ua["clicks_ok"] and ub["clicks_ok"]), "tt_ok": tt_ok}

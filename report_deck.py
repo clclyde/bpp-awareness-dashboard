@@ -453,8 +453,8 @@ class HalvesDeck(Deck):
     # big cards (with a monthly sparkline) and table rows of each slide. "big" lists candidates in order: the first three that exist become the key cards and the
     # rest join the rows, so the deck still builds when follows are not loaded. A card that is not listed is added to the table of the second slide, so nothing
     # silently drops out
-    LAYOUT = [{"big": ["Average reach per month", "Facebook followers", "Average reach per Facebook post", "Facebook post views", "New Facebook follows", "TikTok video views"],
-               "rows": ["TikTok followers", "TikTok reach", "TikTok engagements", "Total reach", "Unique people reached per month", "Reach per ₱1,000",
+    LAYOUT = [{"big": ["Average reach per month", "Facebook followers", "Average reach per Facebook post", "Facebook post views (impressions)", "New Facebook follows", "TikTok video views"],
+               "rows": ["TikTok followers", "TikTok reach", "TikTok engagements", "Total reach", "Ad impressions", "Unique people reached per month", "Reach per ₱1,000",
                         "Impressions per ₱1,000", "TikTok engagement per view"]},
               {"big": ["New follows per ₱1,000", "Engagements per ₱1,000", "Cost per engagement", "Cost per mille (CPM)"],
                "rows": ["Ad post engagements", "Ad engagement rate", "Click-through rate (CTR)", "Cost per click", "Cost per 1,000 reached", "Ad spend per month", "Average frequency",
@@ -462,12 +462,12 @@ class HalvesDeck(Deck):
     # Some campaign- or video-based cards have a more accurate twin, so the deck shows only the twin when both exist: true frequency in place of the average frequency, and the TikTok analytics engagement in place of the engagement per view of the videos.
     # The dashboard still shows both. Empty this dict to bring the campaign-based cards back.
     SUPERSEDED = {"Average frequency": ("True frequency",), "TikTok engagement per view": ("TikTok engagements",)}
-    NAMES = {"Average reach per Facebook post": "Reach per Facebook post", "Unique people reached per month": "Unique reach per month"}   # the longest title wraps to two lines in a wider font; the speaker notes say it is an average
+    NAMES = {"Facebook post views (impressions)": "Post views (impressions)", "Average reach per Facebook post": "Reach per Facebook post", "Unique people reached per month": "Unique reach per month"}   # the longest title wraps to two lines in a wider font; the speaker notes say it is an average
 
     def name(self, c):
         return self.NAMES.get(c["label"], c["label"])
 
-    TAGS = {"Average reach per month": "FACEBOOK ADS", "Facebook followers": "FACEBOOK PAGE", "New Facebook follows": "FACEBOOK PAGE", "Average reach per Facebook post": "FACEBOOK PAGE", "Facebook post views": "FACEBOOK PAGE", "TikTok video views": "TIKTOK",
+    TAGS = {"Average reach per month": "FACEBOOK ADS", "Facebook followers": "FACEBOOK PAGE", "New Facebook follows": "FACEBOOK PAGE", "Average reach per Facebook post": "FACEBOOK PAGE", "Facebook post views (impressions)": "FACEBOOK PAGE", "TikTok video views": "TIKTOK",
             "New follows per ₱1,000": "FACEBOOK PAGE + ADS", "Engagements per ₱1,000": "FACEBOOK ADS", "Cost per engagement": "FACEBOOK ADS", "Cost per mille (CPM)": "FACEBOOK ADS"}
 
     # --- primitives ---
@@ -558,7 +558,8 @@ class HalvesDeck(Deck):
         self.text(s, self.TITLE, self.X0, 0.5, self.CW, 0.6, 28, True, self.INK)
         self.text(s, subtitle, self.X0, 1.12, self.CW, 0.55, 13, color=self.ASH)
         long = len(source) > 520
-        self.text(s, source, self.X0, 6.8 if long else 6.88, self.CW, 0.55 if long else 0.45, 9 if long else 10, color=self.ASH)
+        vlong = len(source) > 700
+        self.text(s, source, self.X0, 6.78 if vlong else (6.8 if long else 6.88), self.CW, 0.65 if vlong else (0.55 if long else 0.45), 8.5 if vlong else (9 if long else 10), color=self.ASH)
         return s
 
     def big_card(self, s, x, y, w, h, c, compact=False):
@@ -704,8 +705,9 @@ class HalvesDeck(Deck):
             sub = f"How far content travelled on Facebook and TikTok{tail} {vs}."
         posts, vids = by.get("Facebook posts published"), by.get("TikTok videos posted")
         counts = (f"{int(posts['a'] + posts['b'])} Facebook posts and {int(vids['a'] + vids['b'])} TikTok videos, " if posts and vids else "")
-        foot = (f"Source: BPP Content SSoT 2025–2026, TikTok Studio and Meta Business Suite; {counts}{R['a_rng']} and {R['b_rng']}. Reach per post and views are lifetime figures of the posts "
-                "published in each period. Unique reach is Meta's account-level monthly figure; total reach sums the monthly campaign reach, so people reached more than once count each time.")
+        foot = (f"Source: BPP Content SSoT 2025–2026, TikTok Studio and Meta Business Suite; {counts}{R['a_rng']} and {R['b_rng']}. Post views are Meta's Views of page posts: every time a post "
+                "was shown or played, repeats included, organic and boosted together (lifetime figures of the posts published in each period). Unique reach is Meta's account-level monthly figure; "
+                "total reach sums the monthly campaign reach and ad impressions count every time an ad was shown, so people reached more than once count each time.")
         plat = any(l in by for l in ("Facebook followers", "TikTok followers", "TikTok reach", "TikTok engagements"))
         if plat:
             foot += " Followers, TikTok reach and TikTok engagements are the platforms' own figures for each period, not sums of posts or videos."
@@ -721,7 +723,8 @@ class HalvesDeck(Deck):
                  "New Facebook follows is the total of the daily new follows in Meta Business Suite for the months of the period. It is counted before unfollows: unfollows are only known for the whole year, "
                  "so net new followers per period cannot be shown. Total reach adds up the monthly campaign reach of the Facebook ads, so people reached in several months or by several campaigns are counted each time. "
                  "Unique reach per month is Meta's own count of different people the ads reached in a month (account-level report), averaged over the period. Reach per Facebook post is the average reach of the posts published in the period (lifetime numbers as exported); Facebook page posts include boosted posts. "
-                 "Post views and TikTok video views are totals for the period. Reach per ₱1,000 still uses campaign reach from Ads Manager, which adds up campaigns, so the number of different people is lower. "
+                 "Post views (impressions) are Meta's Views of the page posts published in the period: every time a post was shown or played, repeats included, organic and boosted posts together, so they are not a number of people and not purely organic. "
+                 "Ad impressions are every time a Facebook ad was shown (Meta's account totals). TikTok video views are totals for the period. Reach per ₱1,000 still uses campaign reach from Ads Manager, which adds up campaigns, so the number of different people is lower. "
                  "Reach and impressions per ₱1,000 show how much distribution each ₱1,000 of ad spend bought. TikTok engagement per view is likes, comments and shares divided by views.")
         table_h = 1.4
         if (self.R["layout"] != "halves" and len(rows) > 5) or (self.R["layout"] == "halves" and len(big) + len(rows) > 12):    # no room for the note bar under that many cards: a short form joins the footnote

@@ -269,6 +269,8 @@ with st.sidebar:
     with st.expander("How the numbers are defined", icon=":material/info:"):
         st.markdown(
             "Follows the Marketing 3.0 KPI deck, Paid awareness module.\n"
+            "- **Post views (impressions)**: Meta's Views of Facebook page posts: every time a post was shown or played, repeats included, organic and boosted posts together; not the number of people\n"
+            "- **Ad impressions**: every time a Facebook ad was shown, repeats included (Meta's account totals); reach counts people\n"
             "- **Reach**: sum of the campaign reach rows of each monthly Ads Manager export. Campaigns overlap, so unique reach is lower. Multi-month ranges show the monthly average\n"
             "- **Avg frequency**: impressions / reach over the month. The deck's alert level (3) is weekly\n"
             "- **Cost per 1,000 reached**: ad spend / reach x 1,000\n"
@@ -398,7 +400,7 @@ with tab_cmp:
     if FOL_OK:
         _items.append(("New page follows", num(fol_a), num(fol_b), change(fol_b, fol_a), "New follows of the Facebook page (Meta Business Suite), before unfollows. Higher is better.", None, None))
     _items += [("Average reach per post", num(oa["reach_per_post"]), num(ob["reach_per_post"]), change(ob["reach_per_post"], oa["reach_per_post"]), None, None, None),
-               ("Post views", num(oa["views"]), num(ob["views"]), change(ob["views"], oa["views"]), None, None, None),
+               ("Post views (impressions)", num(oa["views"]), num(ob["views"]), change(ob["views"], oa["views"]), "Meta Views: every time a page post was shown or played, repeats included. Organic and boosted posts together. Not the number of people.", None, None),
                ("TikTok video views" + (" (partial)" if _pa else ""), num(ta["views"]) if _cov(A0, N) else "n/a", num(tb["views"]) if _cov(B0, N) else "n/a",
                 change(tb["views"], ta["views"]) if TT_OK else None,
                 None if not _pa else "The SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in TT_GAPS if A0 <= m <= A1) + ", so this total is not the whole period.",
@@ -519,6 +521,10 @@ with tab_cmp:
     _after = lambda label, row: _paid_rows.insert(next(i for i, r in enumerate(_paid_rows) if r[0] == label) + 1, row)
     _after("Average reach per month", ("Total reach", num(ca["reach"]), num(cb["reach"]), change(cb["reach"], ca["reach"]), True, sa["reach"], sb["reach"],
                                        "Sum of the monthly campaign reach over the period, so people who saw several campaigns or were reached in several months are counted more than once."))
+    _ai_a, _ai_b = (xa["impressions"], xb["impressions"]) if ACCT_OK else (ca["impressions"], cb["impressions"])
+    _after("Total reach", ("Ad impressions", num(_ai_a), num(_ai_b), change(_ai_b, _ai_a), True, [(_am.loc[m]["impressions"] if ACCT_OK else D.paid(ADS, m, m)["impressions"]) for m in sa.index],
+                           [(_am.loc[m]["impressions"] if ACCT_OK else D.paid(ADS, m, m)["impressions"]) for m in sb.index],
+                           "Every time a Facebook ad was shown (Meta's account totals when they cover the whole period), repeats included. Higher is more delivery, not necessarily better."))
     _after("Ad engagement rate", ("Ad post engagements", num(ua["engagements"]), num(ub["engagements"]), change(ub["engagements"], ua["engagements"]), True,
                                   [D.unit_costs(ADS, m, m)["engagements"] for m in sa.index], [D.unit_costs(ADS, m, m)["engagements"] for m in sb.index],
                                   "Post engagements of the Facebook ads as counted by Ads Manager. Higher is better."))
@@ -554,7 +560,7 @@ with tab_cmp:
         return {"Metric": label, A_NAME + " (" + A_RNG + ")": fmt(a), B_NAME + " (" + B_RNG + ")": fmt(b), "Change": pct(chg_, 1, True) if chg_ is not None else "n/a"}
     rows = ([_row("New page follows (before unfollows)", fol_a, fol_b, change(fol_b, fol_a), num)] if FOL_OK else []) + [
             _row("Facebook reach per post", oa["reach_per_post"], ob["reach_per_post"], change(ob["reach_per_post"], oa["reach_per_post"]), num),
-            _row("Facebook post views", oa["views"], ob["views"], change(ob["views"], oa["views"]), num),
+            _row("Facebook post views (impressions)", oa["views"], ob["views"], change(ob["views"], oa["views"]), num),
             _row("TikTok video views", ta["views"], tb["views"], change(tb["views"], ta["views"]) if TT_OK else None, num),
             _row("Facebook posts published", oa["posts"], ob["posts"], change(ob["posts"], oa["posts"]), num),
             _row("Facebook engagement rate", oa["er"], ob["er"], change(ob["er"], oa["er"]), lambda v: pct(v, 2)),
@@ -576,6 +582,7 @@ with tab_cmp:
                  _row("Click-through rate", xa["ctr"], xb["ctr"], change(xb["ctr"], xa["ctr"]), lambda v: pct(v, 2)),
                  _row("Cost per click", xa["cpc"], xb["cpc"], change(xb["cpc"], xa["cpc"]), lambda v: peso(v, 2))]
     rows += [_row("Total reach", ca["reach"], cb["reach"], change(cb["reach"], ca["reach"]), num),
+             _row("Ad impressions", _ai_a, _ai_b, change(_ai_b, _ai_a), num),
              _row("Ad post engagements", ua["engagements"], ub["engagements"], change(ub["engagements"], ua["engagements"]), num)]
     rows += [_row(D.PLATFORM_METRICS[k], PFA[k], PFB[k], change(PFB[k], PFA[k]), num) for k in D.PLATFORM_METRICS if PF_OK(k)]
     with st.expander("All figures side by side", icon=":material/table:"):
@@ -689,7 +696,7 @@ with tabs[0]:
             metric("Engagement rate", pct(org["er"], 2), chg(org, org_p, "er"), True, help="Reactions + comments + shares, divided by reach.")
         with o2:
             metric("Average reach per post", num(org["reach_per_post"]), chg(org, org_p, "reach_per_post"), True, help="Lifetime reach of each post, as exported.")
-            metric("Post views", num(org["views"]), chg(org, org_p, "views"), True)
+            metric("Post views (impressions)", num(org["views"]), chg(org, org_p, "views"), True, help="Meta Views: every time a page post was shown or played, repeats included. Organic and boosted posts together. Not the number of people.")
     with right_col:
         st.subheader("TikTok")
         t1, t2 = st.columns(2)

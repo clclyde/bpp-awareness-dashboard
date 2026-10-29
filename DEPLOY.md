@@ -16,7 +16,7 @@ Run these in the Supabase SQL Editor, in this order:
 
 ## Updating
 - Code: push to `main` of this repo; the app redeploys. Data refreshes from Supabase every 5 minutes.
-- Data: today the BPP tables are a one-off seed from a snapshot of the BPP Content SSOT (dated in the seed file). To refresh, rebuild the snapshot and re-run `22_seed_bpp.sql` (it replaces the BPP rows). An n8n loader (sheets to Supabase, like PULSE-26) is the next step to automate it.
+- Data: today the BPP tables are a one-off seed from a snapshot of the BPP Content SSOT (dated in the seed file). To refresh, rebuild the snapshot and re-run `22_seed_bpp.sql` (it replaces the BPP rows). Meta ads no longer need that: the n8n workflow `pulse32_meta_ads` loads them weekly from the Marketing API (run `28_bpp_reader_api_grants.sql` once so the read-only login can read those tables; until then the app uses the seed). Facebook posts, TikTok and page metrics are still the seed.
 
 ## Errors
 "The dashboard could not load its data": the Secrets are missing or wrong (host, user `pulse_reader_bpp.<project-ref>`, password) or Supabase is unreachable. Rotate the password if it was ever pasted outside the Secrets box.

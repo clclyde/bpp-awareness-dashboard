@@ -1,6 +1,7 @@
 """BPP (Budol-Proof Pinoy) brand awareness data layer.
 
-Source: Supabase schema pulse (tables social_ads_monthly, fb_posts, tiktok_videos and the BPP rows of ad_spend_monthly), read with the read-only
+Source: Supabase schema pulse (Meta ads from api_meta_ads_monthly and api_meta_account_monthly and Facebook posts from api_fb_posts, loaded by n8n from the Meta APIs, with
+social_ads_monthly for the months before the API tables start and fb_posts as the fallback; tiktok_videos and the BPP rows of ad_spend_monthly), read with the read-only
 pulse_reader_bpp login, which can only see account_code = BPP. Without database settings, a local data/bpp_snapshot.json is used
 (built from the BPP Content SSOT; git-ignored, real client data, development only):
   ads     Ads Manager exports, one row per campaign (or ad) and month, Aug 2025 to now (spend, impressions, reach, ThruPlays, engagements)
@@ -84,6 +85,25 @@ def load_snapshot(path: Path = SNAPSHOT) -> dict:
 SQL = {
     "ads": 'select source_tab as tab, level, reporting_start as "start", reporting_end as "end", name, delivery, result_indicator, spend, impressions, reach, '
            "thruplays, post_engagements, shares, reactions, saves, comments, fb_likes, clicks_all from pulse.social_ads_monthly where account_code = 'BPP' order by id",
+    # Same columns, from the Meta Marketing API tables (n8n workflow pulse32_meta_ads): campaign rows, plus Meta's own account totals (unique reach).
+    # Months the API tables cover replace the SSOT exports of those months; earlier months (Aug and Sep 2025) still come from social_ads_monthly.
+    "ads_api": 'select \'Meta API\' as tab, \'campaign\' as level, reporting_start as "start", reporting_end as "end", campaign_name as name, null::text as delivery, '
+               "null::text as result_indicator, spend, impressions, reach, thruplays, post_engagements, shares, reactions, saves, comments, page_likes as fb_likes, clicks_all "
+               "from pulse.api_meta_ads_monthly where account_code = 'BPP' "
+               "union all "
+               'select \'Meta API\', \'account\', reporting_start, reporting_end, \'Account total\', null::text, null::text, spend, impressions, reach, null::bigint, null::bigint, '
+               "null::bigint, null::bigint, null::bigint, null::bigint, null::bigint, clicks_all from pulse.api_meta_account_monthly where account_code = 'BPP' "
+               "union all "
+               'select source_tab, level, reporting_start, reporting_end, name, delivery, result_indicator, spend, impressions, reach, thruplays, post_engagements, shares, '
+               "reactions, saves, comments, fb_likes, clicks_all from pulse.social_ads_monthly s where account_code = 'BPP' "
+               "and not exists (select 1 from pulse.api_meta_account_monthly a where a.account_code = 'BPP' and a.month_start = date_trunc('month', s.reporting_start)::date) "
+               'order by "start"',
+    # Facebook posts from the Graph API (n8n workflow pulse32_facebook_posts). Same columns as fb_posts: engagements = reactions + comments + shares (as in the Business
+    # Suite exports), reach = Meta's unique media viewers, published in Manila time, type from the post's status type; duration is not available from the API.
+    "posts_api": "select split_part(post_id, '_', 2) as post_id, (published_at at time zone 'Asia/Manila')::date as published, left(message, 500) as title, "
+                 "case when status_type = 'added_photos' then 'Photos' else 'Videos' end as type, null::numeric as duration, views, viewers as reach, "
+                 "coalesce(reactions, 0) + coalesce(comments, 0) + coalesce(shares, 0) as engagements, reactions, comments, shares, clicks, permalink "
+                 "from pulse.api_fb_posts where account_code = 'BPP' and (published_at at time zone 'Asia/Manila')::date >= date '2025-08-01'",
     "posts": "select post_id, published, title, type, duration, views, reach, engagements, reactions, comments, shares, clicks, permalink "
              "from pulse.fb_posts where account_code = 'BPP'",
     "tiktok": "select title, link, posted, views, likes, comments, shares, engagement from pulse.tiktok_videos where account_code = 'BPP'",
@@ -106,7 +126,21 @@ def _query(conf: dict) -> dict:
     try:
         out = {}
         with con.cursor() as cur:
+            out["from_api"] = {}
             for name, sql in SQL.items():
+                if name.endswith("_api"):
+                    continue
+                if name + "_api" in SQL:   # Meta API tables first; until the reader may read them (28_bpp_reader_api_grants.sql) fall back to the SSOT seed
+                    try:
+                        cur.execute(SQL[name + "_api"])
+                        rows = cur.fetchall()
+                        out[name] = pd.DataFrame(rows, columns=[d[0] for d in cur.description])
+                        out["from_api"][name] = len(rows) > 0
+                    except psycopg2.Error:
+                        con.rollback()
+                        out["from_api"][name] = False
+                    if out["from_api"][name]:
+                        continue
                 cur.execute(sql)
                 out[name] = pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
         return out
@@ -119,7 +153,7 @@ def load_db(conf: dict) -> dict:
     rows = sorted(raw["ref"].itertuples(), key=lambda r: r.source_tab == "Campaign Spend Monitoring")   # Campaign Spend Monitoring wins
     ref = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in rows}
     ref_tt = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in raw["ref_tt"].itertuples()}
-    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), "Supabase (live)", ref_tt, raw["page"])
+    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), "Supabase (live, " + ", ".join(k for k, v in raw["from_api"].items() if v) + " from the Meta API)" if any(raw["from_api"].values()) else "Supabase (live)", ref_tt, raw["page"])
 
 
 def load(conf: dict | None = None) -> dict:

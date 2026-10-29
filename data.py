@@ -1,6 +1,6 @@
 """BPP (Budol-Proof Pinoy) brand awareness data layer.
 
-Source: Supabase schema pulse (Meta ads from api_meta_ads_monthly and api_meta_account_monthly and Facebook posts from api_fb_posts, loaded by n8n from the Meta APIs, with
+Source: Supabase schema pulse (Meta ads from api_meta_ads_monthly and api_meta_account_monthly and Facebook posts from api_fb_posts and monthly new page follows from api_fb_page_daily, loaded by n8n from the Meta APIs, with
 social_ads_monthly for the months before the API tables start and fb_posts as the fallback; tiktok_videos and the BPP rows of ad_spend_monthly), read with the read-only
 pulse_reader_bpp login, which can only see account_code = BPP. Without database settings, a local data/bpp_snapshot.json is used
 (built from the BPP Content SSOT; git-ignored, real client data, development only):
@@ -104,6 +104,11 @@ SQL = {
                  "case when status_type = 'added_photos' then 'Photos' else 'Videos' end as type, null::numeric as duration, views, viewers as reach, "
                  "coalesce(reactions, 0) + coalesce(comments, 0) + coalesce(shares, 0) as engagements, reactions, comments, shares, clicks, permalink "
                  "from pulse.api_fb_posts where account_code = 'BPP' and (published_at at time zone 'Asia/Manila')::date >= date '2025-08-01'",
+    # New Facebook follows per complete month (sum of the daily page_daily_follows_unique, equal to the Business Suite Follows.csv), same layout as fb_page_metrics.
+    # Merged into the seed page figures by _query: the whole-period figures (followers, unfollows, supplied platform figures) stay as supplied.
+    "page_api": "select 'follows_month' as metric, date_trunc('month', metric_date)::date as \"start\", (date_trunc('month', metric_date) + interval '1 month - 1 day')::date as \"end\", "
+                "sum(follows) as value from pulse.api_fb_page_daily where account_code = 'BPP' "
+                "and metric_date >= date '2025-08-01' and metric_date < date_trunc('month', (now() at time zone 'Asia/Manila')::date)::date group by 1, 2, 3",
     "posts": "select post_id, published, title, type, duration, views, reach, engagements, reactions, comments, shares, clicks, permalink "
              "from pulse.fb_posts where account_code = 'BPP'",
     "tiktok": "select title, link, posted, views, likes, comments, shares, engagement from pulse.tiktok_videos where account_code = 'BPP'",
@@ -129,6 +134,21 @@ def _query(conf: dict) -> dict:
             out["from_api"] = {}
             for name, sql in SQL.items():
                 if name.endswith("_api"):
+                    continue
+                if name == "page":   # seed rows stay; the monthly follows come from the API where it has the month
+                    cur.execute(sql)
+                    page = pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
+                    try:
+                        cur.execute(SQL["page_api"])
+                        api = pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
+                    except psycopg2.Error:
+                        con.rollback()
+                        api = page.iloc[0:0]
+                    if len(api):
+                        months = set(pd.to_datetime(api["start"]).dt.to_period("M"))
+                        keep = ~((page["metric"] == "follows_month") & pd.to_datetime(page["start"]).dt.to_period("M").isin(months))
+                        page = pd.concat([page[keep], api], ignore_index=True)
+                    out["page"], out["from_api"]["page"] = page, len(api) > 0
                     continue
                 if name + "_api" in SQL:   # Meta API tables first; until the reader may read them (28_bpp_reader_api_grants.sql) fall back to the SSOT seed
                     try:

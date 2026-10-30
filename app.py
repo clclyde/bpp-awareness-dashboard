@@ -413,7 +413,8 @@ with tab_cmp:
     _tt_items = [_pf_item(k, "TikTok analytics, figure of the whole period (supplied by the team). Higher is better.") for k in ("tt_followers", "tt_reach", "tt_engagement") if PF_OK(k)]
     _items[_ix["tt"]:_ix["tt"]] = _tt_items                              # TikTok figures after the TikTok video views, then Facebook followers before the reach per post
     if PF_OK("fb_followers"):
-        _items.insert(_ix["fb"], _pf_item("fb_followers", "Followers of the Facebook page, figure of the whole period (supplied by the team). Higher is better."))
+        _items.insert(_ix["fb"], _pf_item("fb_followers", ("Followers of the Facebook page on the last day of the period (Meta page insights). Higher is better." if S.get("fb_followers_api")
+                                                      else "Followers of the Facebook page, figure of the whole period (supplied by the team). Higher is better.")))
     if not pd.isna(ca["reach_avg"]) and not pd.isna(cb["reach_avg"]):     # the monthly reach of the ads leads the section
         _items.insert(0, ("Average reach per month", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, "Facebook ads: the monthly average of the campaign reach rows, so people who saw several campaigns are counted more than once. Higher is better.", None, None))
     with fl:
@@ -626,18 +627,27 @@ with tab_cards:
                              series=(KMONTHS, c["series"], hover) if c["series"] is not None else None,
                              flags=GAPS if (INTERNAL and c["paid_series"]) else None, key="kc_" + c["label"])
         if title == "Audience Growth" and any(c["label"] in D.PLATFORM_METRICS.values() for r_ in rows_ for c in r_):
-            st.caption("Facebook followers, TikTok followers, TikTok reach and TikTok engagements are figures of the whole period from the platforms' analytics, supplied by the team; "
-                       "they are not sums of posts or videos. TikTok video views and engagement per view are summed from the videos posted in each period.")
-            if INTERNAL:
-                st.caption("Internal: the source and exact definition of these four figures (period-end follower totals? TikTok reach as unique viewers?) are still to be confirmed with the person who supplied them.")
+            if S.get("fb_followers_api"):
+                st.caption("Facebook followers is the page's follower count on the last day of each period (Meta page insights). TikTok followers, TikTok reach and TikTok engagements are figures of the whole period "
+                           "from TikTok's analytics, supplied by the team; they are not sums of videos. TikTok video views and engagement per view are summed from the videos posted in each period.")
+                if INTERNAL:
+                    st.caption("Internal: the source and exact definition of the three TikTok figures (TikTok reach as unique viewers?) are still to be confirmed with the person who supplied them.")
+            else:
+                st.caption("Facebook followers, TikTok followers, TikTok reach and TikTok engagements are figures of the whole period from the platforms' analytics, supplied by the team; "
+                           "they are not sums of posts or videos. TikTok video views and engagement per view are summed from the videos posted in each period.")
+                if INTERNAL:
+                    st.caption("Internal: the source and exact definition of these four figures (period-end follower totals? TikTok reach as unique viewers?) are still to be confirmed with the person who supplied them.")
         if title == "Audience Growth" and "followers_lifetime" in S["page"]:
             _fb_end = any(c["label"] == "Facebook followers" for r_ in rows_ for c in r_)     # the supplied period figure replaces Business Suite's lifetime total, so the two are not shown side by side
-            st.caption(f"Over the whole period (Sep 2025 to Sep 2026) the page gained {S['page'].get('net_follows', float('nan')):,.0f} net followers"
-                       + ("" if _fb_end else f" and has {S['page']['followers_lifetime']:,.0f} followers in total") + " (Meta Business Suite). The new-follows cards count follows before unfollows.")
-            if INTERNAL and _fb_end:
+            st.caption(f"Over the whole period ({S.get('page_label', 'Sep 2025 to Sep 2026')}) the page gained {S['page'].get('net_follows', float('nan')):,.0f} net followers"
+                       + ("" if _fb_end else f" and has {S['page']['followers_lifetime']:,.0f} followers in total") + (" (Meta page insights)" if S.get("fb_followers_api") else " (Meta Business Suite)") + ". The new-follows cards count follows before unfollows.")
+            if INTERNAL and S.get("fb_followers_api"):
+                st.caption(f"Internal: followers, net followers and unfollows for the whole period come from the daily Meta page insights (page_follows and unfollows), counted to the end of each period. "
+                           f"Unfollows are known per day, so net new followers per period could be shown; the daily follows add up to {S['follows']['follows'].sum():,.0f}, the same as the Business Suite Follows.csv.")
+            elif INTERNAL and _fb_end:
                 st.caption(f"Internal: Business Suite shows {S['page']['followers_lifetime']:,.0f} lifetime followers, while the supplied Facebook followers figure for the end of the second period is different "
                            "(timing or definition not confirmed).")
-            if INTERNAL:
+            if INTERNAL and not S.get("fb_followers_api"):
                 _csv, _screen = S["follows"]["follows"].sum(), S["page"].get("net_follows", 0) + S["page"].get("unfollows", 0)
                 st.caption(f"Internal: unfollows are only known for the whole period ({S['page'].get('unfollows', float('nan')):,.0f}), so net new followers and follower growth per period cannot be computed. "
                            f"The daily follows add up to {_csv:,.0f}, while Business Suite's totals imply {_screen:,.0f} follows (unexplained).")

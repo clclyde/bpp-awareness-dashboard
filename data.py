@@ -32,15 +32,23 @@ PLATFORM_METRICS = {"fb_followers": "Facebook followers", "tt_followers": "TikTo
 
 
 def platform_period(tt_platform, m0, m1) -> dict:
-    """TikTok analytics figures whose period is exactly the months m0..m1 (first day of m0 to last day of m1): {metric: value}. Empty when the periods do not match."""
-    if tt_platform is None or len(tt_platform) == 0:
-        return {}
+    """Platform analytics figures whose period is exactly the months m0..m1 (first day of m0 to last day of m1): {metric: value}. Empty when the periods do not match.
+    Facebook followers come from the daily page insights when they are loaded (tt_platform.attrs['fb_daily']): the follower total on the last day of m1, for any
+    period whose last day is already in the data; otherwise from the figure the team supplied for exactly that period."""
+    out = {}
     start, end = m0.start_time.normalize(), m1.end_time.normalize()
-    d = tt_platform[(tt_platform["start"] == start) & (tt_platform["end"] == end)]
-    return {r.metric: float(r.value) for r in d.itertuples() if pd.notna(r.value)}
+    if tt_platform is not None and len(tt_platform):
+        d = tt_platform[(tt_platform["start"] == start) & (tt_platform["end"] == end)]
+        out = {r.metric: float(r.value) for r in d.itertuples() if pd.notna(r.value)}
+    daily = (tt_platform.attrs.get("fb_daily") if tt_platform is not None else None)
+    if daily is not None and len(daily):
+        out.pop("fb_followers", None)    # the supplied figure never mixes with the API one
+        if end in daily.index and pd.notna(daily[end]):
+            out["fb_followers"] = float(daily[end])
+    return out
 
 
-def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None, page=None) -> dict:
+def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None, page=None, fb_daily=None) -> dict:
     """Same typing and derived columns whether the rows come from Supabase or from the snapshot."""
     ads, posts, tt = ads.copy(), posts.copy(), tt.copy()
     for c in ["spend", "impressions", "reach", "thruplays", "post_engagements", "shares", "reactions", "saves", "comments", "fb_likes", "clicks_all"]:
@@ -71,8 +79,27 @@ def _prepare(ads, posts, tt, ref, built_at, source, ref_tt=None, page=None) -> d
     # Platform analytics figures of a whole period (Facebook followers, TikTok followers, reach, engagement), supplied by the team: they are not sums of videos and cannot be split by month
     tt_platform = page[page["metric"].isin(PLATFORM_METRICS)][["metric", "start", "end", "value"]].copy()
     tt_platform["start"], tt_platform["end"] = pd.to_datetime(tt_platform["start"]), pd.to_datetime(tt_platform["end"])
+    # Daily Facebook page followers, new follows and unfollows from the Meta page insights (when loaded): followers of any period, and the whole-period figures
+    # (net followers, unfollows, followers in total) from Sep 2025 to the last complete month. Without them the supplied figures stay.
+    fb_api, page_label = False, "Sep 2025 to Sep 2026"
+    if fb_daily is not None and len(fb_daily):
+        fd = fb_daily.copy()
+        fd["metric_date"] = pd.to_datetime(fd["metric_date"])
+        for c in ["followers", "follows", "unfollows"]:
+            fd[c] = pd.to_numeric(fd[c], errors="coerce")
+        fd = fd.drop_duplicates("metric_date").set_index("metric_date").sort_index()
+        tt_platform.attrs["fb_daily"] = fd["followers"]
+        fb_api = True
+        last_month = pd.Period(built_at, "M") - 1
+        p0, p1 = pd.Timestamp("2025-09-01"), last_month.end_time.normalize()
+        base = pd.Timestamp("2025-08-31")
+        if p1 in fd.index and base in fd.index and pd.notna(fd.loc[p1, "followers"]) and pd.notna(fd.loc[base, "followers"]):
+            page_ctx["followers_lifetime"] = float(fd.loc[p1, "followers"])
+            page_ctx["net_follows"] = float(fd.loc[p1, "followers"] - fd.loc[base, "followers"])
+            page_ctx["unfollows"] = float(fd.loc[p0:p1, "unfollows"].sum())
+            page_label = f"{p0:%b %Y} to {p1:%b %Y}"
     return {"ads": ads, "acct": acct, "follows": follows, "page": page_ctx, "tt_platform": tt_platform, "posts": posts, "tiktok": tt, "ref": {pd.Period(k, "M"): float(v) for k, v in ref.items()},
-            "ref_tt": {pd.Period(k, "M"): float(v) for k, v in (ref_tt or {}).items()}, "built_at": built_at, "source": source}
+            "ref_tt": {pd.Period(k, "M"): float(v) for k, v in (ref_tt or {}).items()}, "built_at": built_at, "source": source, "fb_followers_api": fb_api, "page_label": page_label}
 
 
 def load_snapshot(path: Path = SNAPSHOT) -> dict:
@@ -109,6 +136,7 @@ SQL = {
     "page_api": "select 'follows_month' as metric, date_trunc('month', metric_date)::date as \"start\", (date_trunc('month', metric_date) + interval '1 month - 1 day')::date as \"end\", "
                 "sum(follows) as value from pulse.api_fb_page_daily where account_code = 'BPP' "
                 "and metric_date >= date '2025-08-01' and metric_date < date_trunc('month', (now() at time zone 'Asia/Manila')::date)::date group by 1, 2, 3",
+    "fb_daily": "select metric_date, followers, follows, unfollows from pulse.api_fb_page_daily where account_code = 'BPP' and metric_date >= date '2025-08-01' order by metric_date",
     "posts": "select post_id, published, title, type, duration, views, reach, engagements, reactions, comments, shares, clicks, permalink "
              "from pulse.fb_posts where account_code = 'BPP'",
     "tiktok": "select title, link, posted, views, likes, comments, shares, engagement from pulse.tiktok_videos where account_code = 'BPP'",
@@ -150,6 +178,14 @@ def _query(conf: dict) -> dict:
                         page = pd.concat([page[keep], api], ignore_index=True)
                     out["page"], out["from_api"]["page"] = page, len(api) > 0
                     continue
+                if name == "fb_daily":   # optional: without the grant the supplied follower figures stay
+                    try:
+                        cur.execute(sql)
+                        out[name] = pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
+                    except psycopg2.Error:
+                        con.rollback()
+                        out[name] = None
+                    continue
                 if name + "_api" in SQL:   # Meta API tables first; until the reader may read them (28_bpp_reader_api_grants.sql) fall back to the SSOT seed
                     try:
                         cur.execute(SQL[name + "_api"])
@@ -173,7 +209,10 @@ def load_db(conf: dict) -> dict:
     rows = sorted(raw["ref"].itertuples(), key=lambda r: r.source_tab == "Campaign Spend Monitoring")   # Campaign Spend Monitoring wins
     ref = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in rows}
     ref_tt = {pd.Timestamp(r.month_start).strftime("%Y-%m"): r.spend_php for r in raw["ref_tt"].itertuples()}
-    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), "Supabase (live, " + ", ".join(k for k, v in raw["from_api"].items() if v) + " from the Meta API)" if any(raw["from_api"].values()) else "Supabase (live)", ref_tt, raw["page"])
+    daily = raw.get("fb_daily")
+    api = [k for k, v in raw["from_api"].items() if v] + (["followers"] if daily is not None and len(daily) else [])
+    source = "Supabase (live, " + ", ".join(api) + " from the Meta API)" if api else "Supabase (live)"
+    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), source, ref_tt, raw["page"], daily)
 
 
 def load(conf: dict | None = None) -> dict:

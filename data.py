@@ -137,6 +137,11 @@ SQL = {
                 "sum(follows) as value from pulse.api_fb_page_daily where account_code = 'BPP' "
                 "and metric_date >= date '2025-08-01' and metric_date < date_trunc('month', (now() at time zone 'Asia/Manila')::date)::date group by 1, 2, 3",
     "fb_daily": "select metric_date, followers, follows, unfollows from pulse.api_fb_page_daily where account_code = 'BPP' and metric_date >= date '2025-08-01' order by metric_date",
+    # When the Meta API tables were last loaded (the oldest of their newest pulls): a month counts as complete only if the data was loaded after it ended.
+    "loaded": "select min(t) from (select max(pulled_at) as t from pulse.api_meta_ads_monthly where account_code = 'BPP' union all "
+              "select max(pulled_at) from pulse.api_meta_account_monthly where account_code = 'BPP' union all "
+              "select max(pulled_at) from pulse.api_fb_posts where account_code = 'BPP' union all "
+              "select max(pulled_at) from pulse.api_fb_page_daily where account_code = 'BPP') x where t is not null",
     "posts": "select post_id, published, title, type, duration, views, reach, engagements, reactions, comments, shares, clicks, permalink "
              "from pulse.fb_posts where account_code = 'BPP'",
     "tiktok": "select title, link, posted, views, likes, comments, shares, engagement from pulse.tiktok_videos where account_code = 'BPP'",
@@ -178,6 +183,14 @@ def _query(conf: dict) -> dict:
                         page = pd.concat([page[keep], api], ignore_index=True)
                     out["page"], out["from_api"]["page"] = page, len(api) > 0
                     continue
+                if name == "loaded":     # optional: without it the page-load time is used
+                    try:
+                        cur.execute(sql)
+                        out[name] = cur.fetchone()[0]
+                    except psycopg2.Error:
+                        con.rollback()
+                        out[name] = None
+                    continue
                 if name == "fb_daily":   # optional: without the grant the supplied follower figures stay
                     try:
                         cur.execute(sql)
@@ -212,7 +225,12 @@ def load_db(conf: dict) -> dict:
     daily = raw.get("fb_daily")
     api = [k for k, v in raw["from_api"].items() if v] + (["followers"] if daily is not None and len(daily) else [])
     source = "Supabase (live, " + ", ".join(api) + " from the Meta API)" if api else "Supabase (live)"
-    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, pd.Timestamp.now(), source, ref_tt, raw["page"], daily)
+    built = pd.Timestamp.now()
+    if raw.get("loaded") is not None:    # the data date is the last load, not the moment the page opened (a month that ended after the last load is partial)
+        loaded = pd.Timestamp(raw["loaded"])
+        loaded = loaded.tz_convert("Asia/Manila").tz_localize(None) if loaded.tzinfo is not None else loaded
+        built = min(built, loaded)
+    return _prepare(raw["ads"], raw["posts"], raw["tiktok"], ref, built, source, ref_tt, raw["page"], daily)
 
 
 def load(conf: dict | None = None) -> dict:

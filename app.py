@@ -833,14 +833,17 @@ with tabs[3]:
     _lm = [m for m in MONTHS if m <= LAST]
     st.title("Channel Diagnostics")
     cs1, cs2, cs3 = st.columns([1, 1, 2], vertical_alignment="bottom")
-    CN = cs1.selectbox("Months per period", [3, 4, 6], index=2, key="ch_n", help="The first period is followed straight away by a second period of the same length.")
+    CN = cs1.selectbox("Months per period", [1, 3, 4, 6], index=3, key="ch_n", format_func=lambda n: "1 (month by month)" if n == 1 else str(n),
+                       help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
     _starts = [m for i, m in enumerate(_lm) if i + 2 * CN <= len(_lm)]
-    if st.session_state.get("ch_start") not in _starts:
-        st.session_state["ch_start"] = pd.Period("2025-10", "M") if pd.Period("2025-10", "M") in _starts else _starts[0]
-    CA0 = cs2.selectbox("First period starts", _starts, key="ch_start", format_func=mlabel)
+    _default_start = _starts[-1] if CN == 1 else (pd.Period("2025-10", "M") if pd.Period("2025-10", "M") in _starts else _starts[0])   # month by month opens on the last two months
+    if st.session_state.get("ch_n_prev") != CN or st.session_state.get("ch_start") not in _starts:
+        st.session_state["ch_n_prev"], st.session_state["ch_start"] = CN, _default_start
+    CA0 = cs2.selectbox("First month starts" if CN == 1 else "First period starts", _starts, key="ch_start", format_func=mlabel)
     CA1, CB0, CB1 = CA0 + (CN - 1), CA0 + CN, CA0 + (2 * CN - 1)
-    C_A, C_B = f"First {CN} Months", f"Next {CN} Months"
-    C_ARNG, C_BRNG = f"{mlabel(CA0)} to {mlabel(CA1)}", f"{mlabel(CB0)} to {mlabel(CB1)}"
+    C_A, C_B = (f"First {CN} Months", f"Next {CN} Months") if CN > 1 else ("First Month", "Next Month")
+    _rng = lambda a, b: mlabel(a) if a == b else f"{mlabel(a)} to {mlabel(b)}"
+    C_ARNG, C_BRNG = _rng(CA0, CA1), _rng(CB0, CB1)
     cs3.caption("This view has its own period selector. The sidebar months drive the Overview, Awareness Trend and Content tabs.")
 
     def status_of(chg, lower_is_better=True):
@@ -881,6 +884,8 @@ with tabs[3]:
     st.markdown(f"Comparing {C_ARNG} with {C_BRNG}: Facebook ads cost per 1,000 impressions went from **{peso(ua['cpm'], 2)}** to **{peso(ub['cpm'], 2)}** ({pct(cpm_chg, 1, True)}) "
                 f"and cost per engagement from **{peso(ua['cpe'], 3)}** to **{peso(ub['cpe'], 3)}**; the Facebook page's engagement rate went from **{pct(oa_c['er'], 2)}** to **{pct(ob_c['er'], 2)}**. "
                 "Status compares each channel in the second period with the first, using proposed thresholds that are still to be calibrated with the client.")
+    if CN == 1:
+        st.caption("Month by month: a single month moves more than a 3 to 6 month average (campaign mix, a boosted post), so read the statuses as a quick signal, not a trend.")
 
     # ---- paid channels
     st.subheader("Paid Channels")

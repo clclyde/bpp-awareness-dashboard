@@ -328,23 +328,45 @@ right.caption(f"Data as of {S['built_at']:%d %b %Y}", text_alignment="right")
 if M1 >= BUILT_MONTH:
     st.warning(f"{mlabel(M1)} was still running when the data was loaded ({S['built_at']:%d %b}): its numbers are partial.", icon=":material/schedule:")
 
+# Period selectors: 1 compares one month with the next ("month by month"); 3, 4 and 6 compare two blocks of months.
+PERIOD_OPTIONS = [1, 3, 4, 6]
+
+
+def period_label(n):
+    return "1 (month by month)" if n == 1 else str(n)
+
+
+def period_names(n):
+    return ("First month", "Next month") if n == 1 else (f"First {n} months", f"Next {n} months")
+
+
+def month_range(a, b):
+    return mlabel(a) if a == b else f"{mlabel(a)} to {mlabel(b)}"
+
+
+def default_start(starts, n):
+    """Month by month opens on the last two months; longer periods on the agreed default (Oct 2025), else the first possible start."""
+    return starts[-1] if n == 1 else (pd.Period("2025-10", "M") if pd.Period("2025-10", "M") in starts else starts[0])
+
+
 tab_cmp, tab_cards, *tabs = st.tabs(["First vs Second Half", "KPI Cards", "Overview", "Awareness Trend", "Content", "Channel Diagnostics"])
 
 # ===== First vs second half (default view) =====
 with tab_cmp:
     LASTM = [m for m in MONTHS if m <= LAST]
     DEFAULT_CMP_START = pd.Period("2025-10", "M")                          # agreed default: the first period starts in Oct 2025
-    st.title("Brand Awareness: First Half vs Second Half")
     sel1, sel2, sel3 = st.columns([1, 1, 2], vertical_alignment="bottom")
-    N = sel1.selectbox("Months per period", [3, 4, 6], index=2, key="cmp_n", help="The first period is followed straight away by a second period of the same length.")
+    N = sel1.selectbox("Months per period", PERIOD_OPTIONS, index=3, key="cmp_n", format_func=period_label,
+                       help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
+    st.title("Brand Awareness: Month by Month" if N == 1 else "Brand Awareness: First Half vs Second Half")
     STARTS = [m for i, m in enumerate(LASTM) if i + 2 * N <= len(LASTM)]
-    if st.session_state.get("cmp_start") not in STARTS:
-        st.session_state["cmp_start"] = DEFAULT_CMP_START if DEFAULT_CMP_START in STARTS else STARTS[0]   # default view: Oct 2025 to Mar 2026 vs Apr to Sep 2026
-    A0 = sel2.selectbox("First period starts", STARTS, key="cmp_start", format_func=mlabel)
+    if st.session_state.get("cmp_n_prev") != N or st.session_state.get("cmp_start") not in STARTS:
+        st.session_state["cmp_n_prev"], st.session_state["cmp_start"] = N, default_start(STARTS, N)   # default view: Oct 2025 to Mar 2026 vs Apr to Sep 2026; month by month: the last two months
+    A0 = sel2.selectbox("First month starts" if N == 1 else "First period starts", STARTS, key="cmp_start", format_func=mlabel)
     A1, B0, B1 = A0 + (N - 1), A0 + N, A0 + (2 * N - 1)
-    A_NAME, B_NAME = f"First {N} months", f"Next {N} months"
-    A_TITLE, B_TITLE = f"First {N} Months", f"Next {N} Months"       # headings in Title Case, running text uses the lowercase names
-    A_RNG, B_RNG = f"{mlabel(A0)} to {mlabel(A1)}", f"{mlabel(B0)} to {mlabel(B1)}"
+    A_NAME, B_NAME = period_names(N)
+    A_TITLE, B_TITLE = A_NAME.title(), B_NAME.title()               # headings in Title Case, running text uses the lowercase names
+    A_RNG, B_RNG = month_range(A0, A1), month_range(B0, B1)
     sel3.caption("This view has its own period selector. The sidebar months drive the other tabs.")
 
     ca, cb = D.paid(ADS, A0, A1), D.paid(ADS, B0, B1)
@@ -612,18 +634,20 @@ with tab_cmp:
 # ===== KPI cards: the half vs half comparison as cards =====
 with tab_cards:
     st.html(KC_CSS)
-    st.title("Brand Awareness KPIs: First Half vs Second Half")
     k1, k2, k3 = st.columns([1, 1, 2], vertical_alignment="bottom")
-    KN = k1.selectbox("Months per period", [3, 4, 6], index=2, key="kc_n", help="The first period is followed straight away by a second period of the same length.")
+    KN = k1.selectbox("Months per period", PERIOD_OPTIONS, index=3, key="kc_n", format_func=period_label,
+                      help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
+    st.title("Brand Awareness KPIs: Month by Month" if KN == 1 else "Brand Awareness KPIs: First Half vs Second Half")
     K_STARTS = [m for i, m in enumerate(LASTM) if i + 2 * KN <= len(LASTM)]
-    if st.session_state.get("kc_start") not in K_STARTS:
-        st.session_state["kc_start"] = DEFAULT_CMP_START if DEFAULT_CMP_START in K_STARTS else K_STARTS[0]
-    KA0 = k2.selectbox("First period starts", K_STARTS, key="kc_start", format_func=mlabel)
+    if st.session_state.get("kc_n_prev") != KN or st.session_state.get("kc_start") not in K_STARTS:
+        st.session_state["kc_n_prev"], st.session_state["kc_start"] = KN, default_start(K_STARTS, KN)
+    KA0 = k2.selectbox("First month starts" if KN == 1 else "First period starts", K_STARTS, key="kc_start", format_func=mlabel)
     KA1, KB0, KB1 = KA0 + (KN - 1), KA0 + KN, KA0 + (2 * KN - 1)
     k3.caption("This view has its own period selector, like the First vs Second Half tab.")
-    KVS = f"first {KN} months"
+    _ka, _kb = period_names(KN)
+    KVS = _ka.lower()
     KMONTHS = [KA0 + i for i in range(2 * KN)]
-    st.markdown(f"**Next {KN} months ({mlabel(KB0)} to {mlabel(KB1)})** against the **first {KN} months ({mlabel(KA0)} to {mlabel(KA1)})**. "
+    st.markdown(f"**{_kb} ({month_range(KB0, KB1)})** against the **{_ka.lower()} ({month_range(KA0, KA1)})**. "
                 "Each card shows the latest figure, how much it moved, and what it was before.")
     st.caption("Green means better for BPP, red means worse, grey means about the same (within 2%). Arrows show the direction: for costs, down is better. "
                "The small charts show each month, the first period in grey and the second in blue; hover for the values.")
@@ -855,7 +879,7 @@ with tabs[3]:
     _lm = [m for m in MONTHS if m <= LAST]
     st.title("Channel Diagnostics")
     cs1, cs2, cs3 = st.columns([1, 1, 2], vertical_alignment="bottom")
-    CN = cs1.selectbox("Months per period", [1, 3, 4, 6], index=3, key="ch_n", format_func=lambda n: "1 (month by month)" if n == 1 else str(n),
+    CN = cs1.selectbox("Months per period", PERIOD_OPTIONS, index=3, key="ch_n", format_func=period_label,
                        help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
     _starts = [m for i, m in enumerate(_lm) if i + 2 * CN <= len(_lm)]
     _default_start = _starts[-1] if CN == 1 else (pd.Period("2025-10", "M") if pd.Period("2025-10", "M") in _starts else _starts[0])   # month by month opens on the last two months

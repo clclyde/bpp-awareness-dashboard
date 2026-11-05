@@ -296,6 +296,8 @@ pre = D.paid(ADS, P0, P1) if HAS_PRIOR else None
 org, org_p = D.organic(POSTS, M0, M1), (D.organic(POSTS, P0, P1) if HAS_PRIOR else None)
 tk, tk_p = D.tiktok(TT, M0, M1), (D.tiktok(TT, P0, P1) if HAS_PRIOR else None)
 chg = lambda a, b, k: None if b is None else change(a[k], b[k])
+TK_OK = tk["videos"] > 0                          # no TikTok video rows in the months chosen = the export is not loaded yet: missing data, not zero
+TK_CHG = lambda k: chg(tk, tk_p, k) if TK_OK and tk_p is not None and tk_p["videos"] > 0 else None
 
 pm = D.paid_monthly(ADS)
 pm = pm[(pm.index <= M1)].tail(12)
@@ -694,7 +696,7 @@ with tabs[0]:
         parts.append(f"That is {abs(rc):.1%} {'more' if rc >= 0 else 'less'} reach than {VS}, at a cost per 1,000 {'up' if cc >= 0 else 'down'} {abs(cc):.1%}, "
                      f"with each person reached about {FREQ_CUR:.1f} times on average.")
     if org["posts"]:
-        parts.append(f"Facebook posts reached {num(org['reach_per_post'])} people each with a {pct(org['er'], 2)} engagement rate; TikTok videos drew {num(tk['views'])} views.")
+        parts.append(f"Facebook posts reached {num(org['reach_per_post'])} people each with a {pct(org['er'], 2)} engagement rate" + (f"; TikTok videos drew {num(tk['views'])} views." if TK_OK else "."))
     parts.append("Reach adds up campaign reach, so the number of different people is lower.")
     st.markdown(" ".join(parts))
 
@@ -729,11 +731,13 @@ with tabs[0]:
         st.subheader("TikTok")
         t1, t2 = st.columns(2)
         with t1:
-            metric("Videos posted", num(tk["videos"]), chg(tk, tk_p, "videos"), True)
-            metric("Engagement per view", pct(tk["eng_per_view"], 1), chg(tk, tk_p, "eng_per_view"), True, help="No reach for TikTok in the SSOT, so engagements are divided by views.")
+            metric("Videos posted", num(tk["videos"]) if TK_OK else "n/a", TK_CHG("videos"), True)
+            metric("Engagement per view", pct(tk["eng_per_view"], 1) if TK_OK else "n/a", TK_CHG("eng_per_view"), True, help="No reach for TikTok in the SSOT, so engagements are divided by views.")
         with t2:
-            metric("Video views", num(tk["views"]), chg(tk, tk_p, "views"), True, help=f"{num(tk['views_per_video'])} per video.")
-            metric("Engagements", num(tk["engagements"]), chg(tk, tk_p, "engagements"), True, help="Likes, comments, shares.")
+            metric("Video views", num(tk["views"]) if TK_OK else "n/a", TK_CHG("views"), True, help=f"{num(tk['views_per_video'])} per video." if TK_OK else None)
+            metric("Engagements", num(tk["engagements"]) if TK_OK else "n/a", TK_CHG("engagements"), True, help="Likes, comments, shares.")
+        if not TK_OK:
+            st.caption(f"TikTok figures for {RANGE} are not available yet (they come from the team's TikTok exports), so they show n/a, not zero.")
         _tt_all = set(TT["month"].unique())
         _gap = [m for m in sorted({*(M0 + i for i in range((M1 - M0).n + 1)), *((P0 + i for i in range((P1 - P0).n + 1)) if HAS_PRIOR else ())})
                 if TT["month"].min() <= m <= TT["month"].max() and m not in _tt_all]

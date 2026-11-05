@@ -160,11 +160,38 @@ def stripe():
 
 # Deck-style block header (the look the FPIP and PediaWell dashboards got from their decks, here in the Project Swarm colours):
 # a navy-to-blue bar with the title in capitals, an optional lighter line under it, and a yellow rule.
+_CARD = [0]   # running number for card container keys (the st-key-card CSS class gives cards a white background and shadow)
+
+
+def card_key():
+    _CARD[0] += 1
+    return f"card_{_CARD[0]}"
+
+
 BANNER_CSS = f"""<style>
 .bpp-banner {{ background: linear-gradient(90deg, {NAVY} 0%, {BLUE} 100%); border-radius: 6px 6px 0 0; padding: .8rem 1.1rem; color: #FFFFFF; font-family: {FONT}; margin-top: .4rem; }}
 .bpp-bt {{ font-size: 1.35rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; line-height: 1.2; }}
 .bpp-bs {{ font-size: 1rem; font-weight: 500; opacity: .92; margin-top: 2px; }}
 .bpp-rule {{ height: 6px; background: {YELLOW}; margin-bottom: 1rem; border-radius: 0 0 3px 3px; }}
+/* page: soft blue-grey background fading to white, a navy-to-yellow edge bar, a tinted sidebar, white cards with a light shadow (as in the PediaWell and FPIP dashboards) */
+[data-testid="stApp"] {{ background: linear-gradient(180deg, #E9EFF7 0%, #F3F6FA 340px, #F7F9FC 100%); }}
+[data-testid="stApp"]::before {{ content: ""; position: fixed; left: 0; top: 0; bottom: 0; width: 12px; z-index: 1000002; background: linear-gradient(180deg, {NAVY} 0%, {BLUE} 55%, {YELLOW} 100%); }}
+[data-testid="stSidebar"] {{ background: linear-gradient(180deg, #DCE6F3 0%, #EAF0F8 45%, #F6F8FC 100%); border-right: 1px solid {LINE}; }}
+[data-testid="stSidebar"] [data-testid="stHeading"] {{ color: {NAVY}; }}
+[data-testid="stMetric"] {{ background: #FFFFFF; border: 1px solid {LINE}; border-top: 3px solid {BLUE}; border-radius: 8px; padding: .6rem .6rem .45rem; box-shadow: 0 2px 8px rgba(7,55,99,.07); }}
+[class*="st-key-card"] {{ background: #FFFFFF; border-radius: 10px; box-shadow: 0 2px 10px rgba(7,55,99,.08); }}
+[data-testid="stColumn"]:has(> [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]) {{ background: #FFFFFF; border-radius: 10px; box-shadow: 0 2px 10px rgba(7,55,99,.08); }}
+[data-testid="stColumn"]:has(> [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]) [data-testid="stMetric"] {{ box-shadow: none; border: 0; padding: 0; background: transparent; }}
+[data-testid="stHeader"] {{ background: transparent; }}
+[data-testid="stTabs"] [data-baseweb="tab-list"] {{ background: #FFFFFF; border-radius: 8px 8px 0 0; padding: 0 .6rem; border-bottom: 1px solid {LINE}; }}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {{ background: linear-gradient(90deg, {NAVY}, {YELLOW}) !important; height: 3px; }}
+[data-testid="stHeading"] h2 {{ border-left: 5px solid {YELLOW}; padding-left: .6rem; }}
+.bpp-hero {{ background: linear-gradient(100deg, {NAVY} 0%, {BLUE} 62%, #2A6BD1 100%); border-radius: 0 0 14px 14px; padding: 1rem 1.4rem; margin: -.4rem 0 1rem; display: flex; align-items: center; gap: 1.1rem;
+            font-family: {FONT}; color: #FFFFFF; box-shadow: 0 4px 14px rgba(7,55,99,.25); }}
+.bpp-hero img {{ width: 68px; height: 68px; border-radius: 50%; border: 3px solid {YELLOW}; background: #FFFFFF; object-fit: cover; flex: none; }}
+.bpp-hero .ht {{ font-size: 1.6rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; line-height: 1.15; }}
+.bpp-hero .hs {{ font-size: 1.02rem; font-weight: 500; opacity: .92; margin-top: 2px; }}
+.bpp-hero .hr {{ margin-left: auto; text-align: right; font-size: .9rem; opacity: .92; white-space: nowrap; }}
 .dz {{ font-family: {FONT}; color: {TEXT}; line-height: 1.35; }}
 .dz-name {{ font-weight: 700; color: {NAVY}; font-size: 1rem; margin: 4px 0 2px; overflow-wrap: anywhere; }}
 .dz-topic {{ font-size: .86rem; color: {MUTED}; margin-bottom: 6px; }}
@@ -249,7 +276,7 @@ def kpi_card(label, a, b, fmt, diff_fmt, higher_better=True, vs="first period", 
         pill = f'<span class="kc-pill" style="background:{bg}">{"▲" if c > 0 else "▼"} {abs(c):.1%}</span>'
     d = None if (pd.isna(a) or pd.isna(b) or not compared) else round(b, rnd) - round(a, rnd)
     prev = f'vs <b>{fmt(a)}</b> · {vs}' + (f'<span class="kc-abs">({diff_fmt(d)})</span>' if d is not None else "")
-    with st.container(border=True, height="stretch"):   # fills its column, so cards in one row end at the same height
+    with st.container(border=True, height="stretch", key=card_key()):   # fills its column, so cards in one row end at the same height
         st.html(f'<div class="kc{"" if series is not None else " kc-sm"}"><div class="kc-lab">{label}' + (f' <span class="kc-hint">· {hint}</span>' if hint else "") + '</div>'
                 f'<div class="kc-row"><span class="kc-val">{fmt(b)}</span>{pill}</div><div class="kc-prev">{note or prev}</div>'
                 + (f'<div class="kc-foot">{foot}</div>' if foot else "") + '</div>')
@@ -359,11 +386,12 @@ GAPS = set(CHK[CHK["difference"] < -1].index)                          # Ads Man
 # ---------- masthead ----------
 stripe()
 st.html(BANNER_CSS)
-logo_col, left, right = st.columns([0.7, 5, 2], vertical_alignment="center")
+_logo_img = ""
 if LOGO.exists():
-    logo_col.image(str(LOGO), width=64)
-left.markdown("**BPP, Budol-Proof Pinoy**  \nBrand awareness review")
-right.caption(f"Data as of {S['built_at']:%d %b %Y}", text_alignment="right")
+    import base64
+    _logo_img = f'<img alt="BPP logo" src="data:image/jpeg;base64,{base64.b64encode(LOGO.read_bytes()).decode()}">'
+st.html(f'<div class="bpp-hero">{_logo_img}<div><div class="ht">BPP · Budol-Proof Pinoy</div><div class="hs">Brand awareness review</div></div>'
+        f'<div class="hr">Data as of<br><b>{S["built_at"]:%d %b %Y}</b></div></div>')
 if M1 >= BUILT_MONTH:
     st.warning(f"{mlabel(M1)} was still running when the data was loaded ({S['built_at']:%d %b}): its numbers are partial.", icon=":material/schedule:")
 
@@ -372,7 +400,7 @@ PERIOD_OPTIONS = [1, 3, 4, 6]
 
 
 def period_label(n):
-    return "1 (month by month)" if n == 1 else str(n)
+    return str(n)
 
 
 def period_names(n):
@@ -1104,7 +1132,7 @@ with tabs[4]:
                 for r0 in range(0, len(shown), 3):
                     cols = st.columns(3, gap="medium")
                     for c, (i, row) in zip(cols, shown.iloc[r0:r0 + 3].iterrows()):
-                        with c.container(border=True, height="stretch"):
+                        with c.container(border=True, height="stretch", key=card_key()):
                             if row["ad_id"] in pics:
                                 st.image(pics[row["ad_id"]], width="stretch")
                             else:

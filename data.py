@@ -357,7 +357,7 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None, tt_platform=None)
             [card("Ad spend per month", ca["spend"] / n, cb["spend"] / n, None, "peso0", "Facebook ads"),
              card("Cost per 1,000 reached", ua["cpr1000"], ub["cpr1000"], False, "peso2", "lower is better"),
              card("Reach per ₱1,000", ua["reach_per_k"], ub["reach_per_k"], True, "num", "higher is better"),
-             card("Average frequency", ca["frequency"], cb["frequency"], None, "freq", "impressions / reach")] + true_freq,
+            ] + ([] if acct_ok else [card("Average frequency", ca["frequency"], cb["frequency"], None, "freq", "impressions / reach (campaign reach added up)")]) + true_freq,
             [card("Facebook posts published", oa["posts"], ob["posts"], True, "num"),
              card("TikTok videos posted", ta["videos"], tb["videos"], True, "num", compared=tt_ok),
              card("TikTok engagement per view", ta["eng_per_view"], tb["eng_per_view"], True, "rate", "likes, comments, shares / views", compared=tt_ok),

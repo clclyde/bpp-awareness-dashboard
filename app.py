@@ -508,8 +508,7 @@ with tab_cmp:
                   ("Ad engagement rate", pct(ua["er_impr"], 2), pct(ub["er_impr"], 2), change(ub["er_impr"], ua["er_impr"]), True, er_m(sa), er_m(sb),
                    "Post engagements / impressions of the Facebook ads. Higher is better."),
                   ("Cost per 1,000 reached", peso(ca["cpr"], 2), peso(cb["cpr"], 2), cc, False, sa["cpr"], sb["cpr"], "Ad spend / reach x 1,000. Lower is better."),
-                  ("Ad spend (per month)", peso(spm_a), peso(spm_b), sc, None, sa["spend"], sb["spend"], "Ads Manager, ex-VAT."),
-                  ("Average frequency", fa(ca), fa(cb), g("frequency"), False, sa["frequency"], sb["frequency"], "Impressions / reach over the month.")]
+                  ("Ad spend (per month)", peso(spm_a), peso(spm_b), sc, None, sa["spend"], sb["spend"], "Ads Manager, ex-VAT.")]
     if ACCT_OK:     # Meta's account-level totals: each person counted once a month, clicks for every month
         _mser = lambda ser, fn: [fn(_am.loc[m]) for m in ser.index]
         _paid_rows[1:1] = [("Unique people reached (monthly average)", num(xa["reach_avg"]), num(xb["reach_avg"]), change(xb["reach_avg"], xa["reach_avg"]), True,
@@ -519,6 +518,8 @@ with tab_cmp:
                               _mser(sa, lambda r: r["clicks_all"] / r["impressions"]), _mser(sb, lambda r: r["clicks_all"] / r["impressions"]), "Clicks (all) / impressions. Higher is better."))
         _paid_rows.append(("True frequency", f"{xa['frequency']:.2f}", f"{xb['frequency']:.2f}", change(xb["frequency"], xa["frequency"]), None,
                            _mser(sa, lambda r: r["impressions"] / r["reach"]), _mser(sb, lambda r: r["impressions"] / r["reach"]), "Impressions / unique reach over the month."))
+    else:           # no account-level reach for these months: the campaign-based frequency is all there is
+        _paid_rows.append(("Average frequency", fa(ca), fa(cb), g("frequency"), False, sa["frequency"], sb["frequency"], "Impressions / reach over the month (campaign reach added up)."))
     _after = lambda label, row: _paid_rows.insert(next(i for i, r in enumerate(_paid_rows) if r[0] == label) + 1, row)
     _after("Average reach per month", ("Total reach", num(ca["reach"]), num(cb["reach"]), change(cb["reach"], ca["reach"]), True, sa["reach"], sb["reach"],
                                        "Sum of the monthly campaign reach over the period, so people who saw several campaigns or were reached in several months are counted more than once."))
@@ -573,8 +574,7 @@ with tab_cmp:
             _row("Ad engagement rate", ua["er_impr"], ub["er_impr"], change(ub["er_impr"], ua["er_impr"]), lambda v: pct(v, 2)),
             _row("Cost per 1,000 reached", ca["cpr"], cb["cpr"], cc, lambda v: peso(v, 2)),
             _row("Ad spend (total)", ca["spend"], cb["spend"], change(cb["spend"], ca["spend"]), peso),
-            _row("Ad spend (per month)", spm_a, spm_b, sc, peso),
-            _row("Average frequency", ca["frequency"], cb["frequency"], g("frequency"), lambda v: "n/a" if pd.isna(v) else f"{v:.2f}")]
+            _row("Ad spend (per month)", spm_a, spm_b, sc, peso)]
     if FOL_OK:
         rows.insert(9, _row("New follows per ₱1,000", ua["fol_per_k"], ub["fol_per_k"], change(ub["fol_per_k"], ua["fol_per_k"]), lambda v: f"{v:,.1f}"))
     if ACCT_OK:
@@ -582,6 +582,8 @@ with tab_cmp:
                  _row("True frequency", xa["frequency"], xb["frequency"], change(xb["frequency"], xa["frequency"]), lambda v: f"{v:.2f}"),
                  _row("Click-through rate", xa["ctr"], xb["ctr"], change(xb["ctr"], xa["ctr"]), lambda v: pct(v, 2)),
                  _row("Cost per click", xa["cpc"], xb["cpc"], change(xb["cpc"], xa["cpc"]), lambda v: peso(v, 2))]
+    else:
+        rows.append(_row("Average frequency", ca["frequency"], cb["frequency"], g("frequency"), lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"))
     rows += [_row("Total reach", ca["reach"], cb["reach"], change(cb["reach"], ca["reach"]), num),
              _row("Ad impressions", _ai_a, _ai_b, change(_ai_b, _ai_a), num),
              _row("Ad post engagements", ua["engagements"], ub["engagements"], change(ub["engagements"], ua["engagements"]), num)]

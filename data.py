@@ -237,6 +237,125 @@ def load(conf: dict | None = None) -> dict:
     return load_db(conf) if conf else load_snapshot()
 
 
+# ---------- ad designs (creatives): loaded apart from the main data, because the pictures are large ----------
+# pulse.api_meta_ad_creatives (one row per ad: name, campaign, format, text, link, picture as base64) and pulse.api_meta_ad_monthly (results per ad and month),
+# loaded weekly by the n8n workflow pulse32_meta_ad_creatives; the reader needs supabase/33_meta_ad_creatives.sql. Without them the Ad Designs tab says so.
+CREATIVE_SQL = {
+    "ads": "select ad_id, ad_name, campaign_name, objective, effective_status, created_time, creative_type, headline, body, call_to_action, story_url, "
+           "(thumbnail_b64 is not null) as has_picture from pulse.api_meta_ad_creatives where account_code = 'BPP'",
+    "monthly": "select ad_id, month_start, spend, impressions, reach, clicks_all, link_clicks, post_engagements, reactions, comments, shares, video_views, thruplays "
+               "from pulse.api_meta_ad_monthly where account_code = 'BPP'",
+    "pictures": "select ad_id, thumbnail_b64 from pulse.api_meta_ad_creatives where account_code = 'BPP' and thumbnail_b64 is not null and ad_id = any(%s)",
+}
+FORMAT_WORDS = {"image": "Image", "video": "Video", "carousel": "Carousel", "reel": "Reel", "collection": "Collection"}
+
+
+def _connect(conf: dict):
+    import psycopg2
+
+    return psycopg2.connect(host=conf["host"], port=int(conf.get("port", 5432)), dbname=conf.get("dbname", "postgres"), user=conf["user"], password=conf["password"],
+                            sslmode=conf.get("sslmode", "require"), connect_timeout=10, options="-c default_transaction_read_only=on")
+
+
+def parse_ad_name(name: str) -> dict:
+    """BPP ad names read BPP_FB_<goal>_<format>_<topic>_<audience>_<MMDDYYYY>: the goal can hold an underscore, so the format word is the anchor."""
+    parts = str(name or "").split("_")
+    idx = next((i for i, p in enumerate(parts) if p.lower() in FORMAT_WORDS), None)
+    pretty = lambda s: (lambda t: t[:1].upper() + t[1:])(s.replace("-", " ").replace("+", " + ").strip()) if s else ""   # only the first letter is raised: keeps PDIC, BPP
+    if idx is None:
+        return {"format": "", "topic": "", "audience": ""}
+    return {"format": FORMAT_WORDS[parts[idx].lower()], "topic": pretty(parts[idx + 1]) if idx + 1 < len(parts) else "",
+            "audience": pretty(parts[idx + 2]) if idx + 2 < len(parts) else ""}
+
+
+def load_creatives(conf: dict | None):
+    """{'ads': one row per design, 'monthly': results per ad and month} or None when the tables are missing, empty or not readable by the dashboard login."""
+    if not conf:
+        return None
+    import psycopg2
+
+    try:
+        con = _connect(conf)
+    except psycopg2.Error:
+        return None
+    try:
+        with con.cursor() as cur:
+            frames = {}
+            for k in ("ads", "monthly"):
+                cur.execute(CREATIVE_SQL[k])
+                frames[k] = pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
+    except psycopg2.Error:
+        return None
+    finally:
+        con.close()
+    ads, mo = frames["ads"], frames["monthly"]
+    if not len(ads) or not len(mo):
+        return None
+    for c in ["spend", "impressions", "reach", "clicks_all", "link_clicks", "post_engagements", "reactions", "comments", "shares", "video_views", "thruplays"]:
+        mo[c] = pd.to_numeric(mo[c], errors="coerce").fillna(0)
+    mo["month"] = pd.to_datetime(mo["month_start"]).dt.to_period("M")
+    parsed = ads["ad_name"].map(parse_ad_name).apply(pd.Series)
+    ads = pd.concat([ads, parsed], axis=1)
+    ads["format"] = ads["format"].where(ads["format"] != "", ads["creative_type"].map({"PHOTO": "Image", "VIDEO": "Video", "SHARE": "Post"}).fillna("Other"))
+    ads["created"] = pd.to_datetime(ads["created_time"], utc=True, errors="coerce").dt.tz_convert("Asia/Manila").dt.tz_localize(None)
+    ads["goal"] = ads["objective"].map({"OUTCOME_AWARENESS": "Reach", "OUTCOME_ENGAGEMENT": "Engagement", "OUTCOME_TRAFFIC": "Traffic", "OUTCOME_LEADS": "Leads"}).fillna(ads["objective"].fillna("Other"))
+    return {"ads": ads, "monthly": mo}
+
+
+def load_pictures(conf: dict | None, ad_ids) -> dict:
+    """ad_id -> JPEG bytes for the designs shown (fetched only for those, so the whole picture set is never pulled)."""
+    import base64
+
+    ids = [str(i) for i in ad_ids]
+    if not conf or not ids:
+        return {}
+    import psycopg2
+
+    try:
+        con = _connect(conf)
+        with con.cursor() as cur:
+            cur.execute(CREATIVE_SQL["pictures"], (ids,))
+            rows = cur.fetchall()
+        con.close()
+    except psycopg2.Error:
+        return {}
+    out = {}
+    for ad_id, b64 in rows:
+        try:
+            out[ad_id] = base64.b64decode(b64)
+        except Exception:
+            pass
+    return out
+
+
+def designs(cr: dict, m0, m1, min_impressions: int = 0) -> pd.DataFrame:
+    """One row per ad with results in the months m0..m1, with the usual rates. Reach is each ad's own monthly reach added over the months (people reached in two
+    months count twice, and ads overlap), so compare ads with it, do not add it up. Engagement rate = (reactions + comments + shares) / reach, as for the page posts."""
+    mo = cr["monthly"]
+    mo = mo[(mo["month"] >= m0) & (mo["month"] <= m1)]
+    g = mo.groupby("ad_id")[["spend", "impressions", "reach", "clicks_all", "link_clicks", "post_engagements", "reactions", "comments", "shares", "video_views", "thruplays"]].sum()
+    g["months_active"] = mo.groupby("ad_id")["month"].nunique()
+    d = cr["ads"].merge(g, left_on="ad_id", right_index=True, how="inner")
+    d = d[d["impressions"] >= min_impressions].copy()
+    d["engagements"] = d["reactions"] + d["comments"] + d["shares"]
+    d["er"] = d.apply(lambda r: _div(r["engagements"], r["reach"]), axis=1)
+    d["ctr"] = d.apply(lambda r: _div(r["clicks_all"], r["impressions"]), axis=1)
+    d["cpr"] = d.apply(lambda r: _div(r["spend"] * 1000, r["reach"]), axis=1)
+    d["cpm"] = d.apply(lambda r: _div(r["spend"] * 1000, r["impressions"]), axis=1)
+    d["cpe"] = d.apply(lambda r: _div(r["spend"], r["engagements"]), axis=1)
+    d["frequency"] = d.apply(lambda r: _div(r["impressions"], r["reach"]), axis=1)
+    d["thru_rate"] = d.apply(lambda r: _div(r["thruplays"], r["impressions"]) if r["thruplays"] > 0 else float("nan"), axis=1)
+    return d.reset_index(drop=True)
+
+
+def designs_by_format(d: pd.DataFrame) -> pd.DataFrame:
+    g = d.groupby("format").agg(ads=("ad_id", "count"), spend=("spend", "sum"), impressions=("impressions", "sum"), reach=("reach", "sum"), engagements=("engagements", "sum"))
+    g["er"] = g.apply(lambda r: _div(r["engagements"], r["reach"]), axis=1)
+    g["cpr"] = g.apply(lambda r: _div(r["spend"] * 1000, r["reach"]), axis=1)
+    g["reach_per_ad"] = g.apply(lambda r: _div(r["reach"], r["ads"]), axis=1)
+    return g.sort_values("spend", ascending=False)
+
+
 def _div(a, b):
     return float(a) / float(b) if b and not pd.isna(b) and b != 0 and not pd.isna(a) else float("nan")
 

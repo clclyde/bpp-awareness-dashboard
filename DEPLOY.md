@@ -23,3 +23,5 @@ Run these in the Supabase SQL Editor, in this order:
 
 ## Access password (while the app is public)
 Streamlit Community Cloud allows one private app, so this app is public. To keep casual visitors out, add one line to the app's **Secrets**, above the `[supabase]` block: `app_password = "<shared password>"`. The app then shows a password box first and loads no data until it is right. Change it by editing the Secrets (visitors already inside stay in until their session ends). It is a shared secret with no lockout and no per-person logins, so treat it as a door latch, not security; the real fix is the razzaconsulting.com-only hosting. Never put the password in the repo or in chat.
+
+- Ad Designs tab (2026-11-06): run `supabase/33_meta_ad_creatives.sql` once in Supabase (all four checks must be true), then run the n8n workflow `pulse32_meta_ad_creatives` once by hand and read Verify. Until then the tab says the designs are not loaded yet. The logo is `assets/bpp_logo.jpg` (must be in the deployed repo).

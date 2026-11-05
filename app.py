@@ -26,7 +26,8 @@ if getattr(D, "_loaded_mtime", None) != _dm:
     D = importlib.reload(D)
     D._loaded_mtime = _dm
 
-st.set_page_config(page_title="BPP Brand Awareness Review", page_icon=":material/shield:", layout="wide")
+LOGO = Path(__file__).parent / "assets" / "bpp_logo.jpg"    # the Budol-Proof Pinoy page's profile picture
+st.set_page_config(page_title="BPP Brand Awareness Review", page_icon=str(LOGO) if LOGO.exists() else ":material/shield:", layout="wide")
 
 # Project Swarm palette, read from the deck file
 NAVY, BLUE, YELLOW, RED = "#073763", "#0B3691", "#F1C232", "#D10000"
@@ -58,6 +59,8 @@ if any(f.exists() for f in _secret_files):
 _pw = _pw or os.environ.get("APP_PASSWORD")
 if _pw and not st.session_state.get("authed"):
     st.html(f'<div style="height:8px;background:{YELLOW}"></div>')
+    if LOGO.exists():
+        st.image(str(LOGO), width=96)
     st.title("BPP Brand Awareness Review")
     st.markdown("This dashboard is for invited viewers. Enter the access password you were given.")
     with st.form("login"):
@@ -75,6 +78,16 @@ if _pw and not st.session_state.get("authed"):
 @st.cache_data(ttl=300, show_spinner="Loading BPP data...")
 def load(conf):
     return D.load(conf)
+
+
+@st.cache_data(ttl=300, show_spinner="Loading ad designs...")
+def load_creatives(conf):
+    return D.load_creatives(conf)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_pictures(conf, ad_ids):
+    return D.load_pictures(conf, ad_ids)
 
 
 try:
@@ -143,6 +156,29 @@ def metric(label, value, chg, higher_better=True, series=None, help=None, vs=Non
 def stripe():
     """A plain yellow rule across the top of the page."""
     st.html(f'<div style="height:8px;background:{YELLOW}"></div>')
+
+
+# Deck-style block header (the look the FPIP and PediaWell dashboards got from their decks, here in the Project Swarm colours):
+# a navy-to-blue bar with the title in capitals, an optional lighter line under it, and a yellow rule.
+BANNER_CSS = f"""<style>
+.bpp-banner {{ background: linear-gradient(90deg, {NAVY} 0%, {BLUE} 100%); border-radius: 6px 6px 0 0; padding: .8rem 1.1rem; color: #FFFFFF; font-family: {FONT}; margin-top: .4rem; }}
+.bpp-bt {{ font-size: 1.35rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; line-height: 1.2; }}
+.bpp-bs {{ font-size: 1rem; font-weight: 500; opacity: .92; margin-top: 2px; }}
+.bpp-rule {{ height: 6px; background: {YELLOW}; margin-bottom: 1rem; border-radius: 0 0 3px 3px; }}
+.dz {{ font-family: {FONT}; color: {TEXT}; line-height: 1.35; }}
+.dz-name {{ font-weight: 700; color: {NAVY}; font-size: 1rem; margin: 4px 0 2px; overflow-wrap: anywhere; }}
+.dz-topic {{ font-size: .86rem; color: {MUTED}; margin-bottom: 6px; }}
+.dz-tag {{ display: inline-block; font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin: 0 4px 4px 0; letter-spacing: .02em; }}
+.dz-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px 10px; margin-top: 6px; }}
+.dz-grid > div {{ min-width: 0; }}
+.dz-lab {{ font-size: .7rem; color: {MUTED}; text-transform: uppercase; letter-spacing: .02em; line-height: 1.2; }}
+.dz-val {{ font-size: 1.1rem; font-weight: 700; color: {NAVY}; font-variant-numeric: tabular-nums; white-space: nowrap; }}
+.dz-rank {{ font-size: .8rem; font-weight: 800; color: #FFFFFF; background: {NAVY}; border-radius: 50%; display: inline-block; width: 1.7rem; height: 1.7rem; line-height: 1.7rem; text-align: center; margin-right: 6px; }}
+</style>"""
+
+
+def banner(title, sub=None):
+    st.html(f'<div class="bpp-banner"><div class="bpp-bt">{title}</div>' + (f'<div class="bpp-bs">{sub}</div>' if sub else "") + '</div><div class="bpp-rule"></div>')
 
 
 def style_fig(fig, height=300, tickprefix="", tickformat=None):
@@ -322,8 +358,11 @@ GAPS = set(CHK[CHK["difference"] < -1].index)                          # Ads Man
 
 # ---------- masthead ----------
 stripe()
-left, right = st.columns([3, 1], vertical_alignment="bottom")
-left.caption("BPP, Budol-Proof Pinoy · Brand awareness review")
+st.html(BANNER_CSS)
+logo_col, left, right = st.columns([0.7, 5, 2], vertical_alignment="center")
+if LOGO.exists():
+    logo_col.image(str(LOGO), width=64)
+left.markdown("**BPP, Budol-Proof Pinoy**  \nBrand awareness review")
 right.caption(f"Data as of {S['built_at']:%d %b %Y}", text_alignment="right")
 if M1 >= BUILT_MONTH:
     st.warning(f"{mlabel(M1)} was still running when the data was loaded ({S['built_at']:%d %b}): its numbers are partial.", icon=":material/schedule:")
@@ -349,7 +388,7 @@ def default_start(starts, n):
     return starts[-1] if n == 1 else (pd.Period("2025-10", "M") if pd.Period("2025-10", "M") in starts else starts[0])
 
 
-tab_cmp, tab_cards, *tabs = st.tabs(["First vs Second Half", "KPI Cards", "Overview", "Awareness Trend", "Content", "Channel Diagnostics"])
+tab_cmp, tab_cards, *tabs = st.tabs(["First vs Second Half", "KPI Cards", "Overview", "Awareness Trend", "Content", "Channel Diagnostics", "Ad Designs"])
 
 # ===== First vs second half (default view) =====
 with tab_cmp:
@@ -358,7 +397,7 @@ with tab_cmp:
     sel1, sel2, sel3 = st.columns([1, 1, 2], vertical_alignment="bottom")
     N = sel1.selectbox("Months per period", PERIOD_OPTIONS, index=3, key="cmp_n", format_func=period_label,
                        help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
-    st.title("Brand Awareness: Month by Month" if N == 1 else "Brand Awareness: First Half vs Second Half")
+    banner("Brand Awareness: Month by Month" if N == 1 else "Brand Awareness: First Half vs Second Half")
     STARTS = [m for i, m in enumerate(LASTM) if i + 2 * N <= len(LASTM)]
     if st.session_state.get("cmp_n_prev") != N or st.session_state.get("cmp_start") not in STARTS:
         st.session_state["cmp_n_prev"], st.session_state["cmp_start"] = N, default_start(STARTS, N)   # default view: Oct 2025 to Mar 2026 vs Apr to Sep 2026; month by month: the last two months
@@ -637,7 +676,7 @@ with tab_cards:
     k1, k2, k3 = st.columns([1, 1, 2], vertical_alignment="bottom")
     KN = k1.selectbox("Months per period", PERIOD_OPTIONS, index=3, key="kc_n", format_func=period_label,
                       help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
-    st.title("Brand Awareness KPIs: Month by Month" if KN == 1 else "Brand Awareness KPIs: First Half vs Second Half")
+    banner("Brand Awareness KPIs: Month by Month" if KN == 1 else "Brand Awareness KPIs: First Half vs Second Half")
     K_STARTS = [m for i, m in enumerate(LASTM) if i + 2 * KN <= len(LASTM)]
     if st.session_state.get("kc_n_prev") != KN or st.session_state.get("kc_start") not in K_STARTS:
         st.session_state["kc_n_prev"], st.session_state["kc_start"] = KN, default_start(K_STARTS, KN)
@@ -707,6 +746,7 @@ with tab_cards:
 
 # ===== Overview =====
 with tabs[0]:
+    banner("Overview", RANGE)
     reach_now = cur["reach"] if cur["months"] == 1 else cur["reach_avg"]
     if pd.isna(reach_now) or pd.isna(cur["cpr"]):
         st.title(f"Brand Awareness, {RANGE}")
@@ -781,7 +821,7 @@ with tabs[0]:
 
 # ===== Awareness trend =====
 with tabs[1]:
-    st.title("How Awareness Moved, Month by Month")
+    banner("How Awareness Moved, Month by Month", f"Up to {mlabel(M1)}")
     st.markdown(f"Paid awareness on Facebook up to {mlabel(M1)}. Weekly reach and target audiences are not in the SSOT yet, so the unit is the month.")
     xs = [m.to_timestamp() for m in pm.index]
     flags = [INTERNAL and m in GAPS for m in pm.index]
@@ -822,7 +862,7 @@ with tabs[1]:
 
 # ===== Content =====
 with tabs[2]:
-    st.title("What People Saw and Engaged With")
+    banner("What People Saw and Engaged With", RANGE)
     st.markdown(f"Facebook page posts and TikTok videos published in {RANGE}.")
     tp = D.top_posts(POSTS, M0, M1, 10)
     bt = D.by_post_type(POSTS, M0, M1)
@@ -877,7 +917,7 @@ with tabs[2]:
 with tabs[3]:
     # ----- periods: two equal periods, own selector, default 6 months starting Oct 2025 (same idea as the first tab)
     _lm = [m for m in MONTHS if m <= LAST]
-    st.title("Channel Diagnostics")
+    banner("Channel Diagnostics")
     cs1, cs2, cs3 = st.columns([1, 1, 2], vertical_alignment="bottom")
     CN = cs1.selectbox("Months per period", PERIOD_OPTIONS, index=3, key="ch_n", format_func=period_label,
                        help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
@@ -1014,5 +1054,90 @@ with tabs[3]:
         st.info("No Facebook ads in these periods.")
     st.caption("Reach, boosting (engagement and video views) and page-like campaigns have very different costs, so compare each type with itself. Status uses the change in cost per mille from the first period to the second; lower is better. "
                "Improved is 5% lower or better, Steady is within 5%, Slightly weaker is up to 15% higher, Weaker is beyond that. A type with under 2% of the spend gets no status. These are proposed thresholds, to be calibrated with the client.")
+
+# ===== Ad Designs: the ads themselves (picture, topic, results), best first =====
+with tabs[4]:
+    banner("Ad Designs", RANGE)
+    CR = load_creatives(_conf)
+    if CR is None:
+        st.info("The ad designs are not loaded yet. They come from Meta's ad data once a week; this tab fills in after the first load.", icon=":material/image:")
+        if INTERNAL:
+            st.caption("Internal: needs supabase/33_meta_ad_creatives.sql (tables and read access for this login) and one run of the n8n workflow `pulse32_meta_ad_creatives`. "
+                       "Snapshot mode (no database) never has designs.")
+    else:
+        f1, f2_, f3, f4, f5 = st.columns([1.4, 1, 1, 1, 0.8], vertical_alignment="bottom")
+        SORTS = {"Reach": ("reach", False), "Engagement rate": ("er", False), "Cost per 1,000 reached (lowest first)": ("cpr", True), "Spend": ("spend", False),
+                 "Click-through rate": ("ctr", False), "Video view-through": ("thru_rate", False)}
+        sort_by = f1.selectbox("Rank designs by", list(SORTS), key="dz_sort")
+        min_impr = f5.number_input("Min. impressions", min_value=0, value=1000, step=500, key="dz_min",
+                                   help="Designs with fewer ad impressions in the period are left out, so a handful of views cannot top a ranking.")
+        ALL_D = D.designs(CR, M0, M1, int(min_impr))
+        if not len(ALL_D):
+            st.info(f"No ad designs with results in {RANGE}" + (f" and at least {int(min_impr):,} impressions." if min_impr else "."))
+        else:
+            fmts, goals = sorted(ALL_D["format"].unique()), sorted(ALL_D["goal"].unique())
+            pick_f = f2_.multiselect("Format", fmts, default=fmts, key="dz_fmt")
+            pick_g = f3.multiselect("Campaign goal", goals, default=goals, key="dz_goal")
+            show_n = f4.selectbox("Show", [6, 9, 12, 24], index=1, key="dz_n")
+            DZ = ALL_D[ALL_D["format"].isin(pick_f) & ALL_D["goal"].isin(pick_g)]
+            col, asc = SORTS[sort_by]
+            DZ = DZ[DZ[col].notna()].sort_values(col, ascending=asc).reset_index(drop=True)
+            if not len(DZ):
+                st.info("No designs match these filters.")
+            else:
+                top = DZ.iloc[0]
+                what = (top["topic"] or top["ad_name"][:60]) + (f" ({top['format'].lower()})" if top["format"] else "")
+                st.markdown(f"**{len(DZ)} ad designs** ran in {RANGE}. Ranked by {sort_by.split(' (')[0].lower()}, the first is **{what}**: "
+                            f"{num(top['reach'])} reach, {pct(top['er'], 2)} engagement rate, {peso(top['cpr'], 2)} per 1,000 reached.")
+                bf = D.designs_by_format(DZ)
+                if len(bf) > 1:
+                    st.subheader("Image vs Video, Same Period", anchor=False)
+                    st.dataframe(pd.DataFrame({"Format": bf.index, "Ads": bf["ads"].values, "Spend (₱)": bf["spend"].values, "Reach per ad": bf["reach_per_ad"].values,
+                                               "Engagement rate": bf["er"].values, "Cost per 1,000 reached (₱)": bf["cpr"].values}), hide_index=True, width="stretch",
+                                 column_config={"Spend (₱)": st.column_config.NumberColumn(format="localized"), "Reach per ad": st.column_config.NumberColumn(format="localized"),
+                                                "Engagement rate": st.column_config.NumberColumn(format="percent"),
+                                                "Cost per 1,000 reached (₱)": st.column_config.NumberColumn(format="%.2f")})
+                shown = DZ.head(int(show_n))
+                pics = load_pictures(_conf, tuple(shown["ad_id"]))
+                st.subheader(f"Top {len(shown)} Designs", anchor=False)
+                STATUS = {"ACTIVE": ("Running", "#1E7D32"), "PAUSED": ("Paused", "#66717D"), "CAMPAIGN_PAUSED": ("Paused", "#66717D"), "ADSET_PAUSED": ("Paused", "#66717D")}
+                for r0 in range(0, len(shown), 3):
+                    cols = st.columns(3, gap="medium")
+                    for c, (i, row) in zip(cols, shown.iloc[r0:r0 + 3].iterrows()):
+                        with c.container(border=True, height="stretch"):
+                            if row["ad_id"] in pics:
+                                st.image(pics[row["ad_id"]], width="stretch")
+                            else:
+                                st.caption("No picture from Meta for this ad.")
+                            stat_t, stat_c = STATUS.get(row["effective_status"], ((row["effective_status"] or "").replace("_", " ").title(), "#66717D"))
+                            tags = (f'<span class="dz-tag" style="background:{NAVY};color:#fff">{row["format"]}</span>' if row["format"] else "") \
+                                + f'<span class="dz-tag" style="background:{YELLOW};color:{TEXT}">{row["goal"]}</span>' \
+                                + (f'<span class="dz-tag" style="background:{stat_c};color:#fff">{stat_t}</span>' if stat_t else "")
+                            sub = " · ".join(x for x in [row["audience"], f"{row['created']:%d %b %Y}" if pd.notna(row["created"]) else ""] if x)
+                            link = f'<a href="{row["story_url"]}" target="_blank">Open the post</a>' if row["story_url"] else ""
+                            st.html(
+                                f'<div class="dz"><div class="dz-name"><span class="dz-rank">{i + 1}</span>{(row["topic"] or row["ad_name"])[:70]}</div>'
+                                f'<div class="dz-topic">{sub}</div><div>{tags}</div>'
+                                f'<div class="dz-grid">'
+                                f'<div><div class="dz-lab">Reach</div><div class="dz-val">{num(row["reach"])}</div></div>'
+                                f'<div><div class="dz-lab">Spend</div><div class="dz-val">{peso(row["spend"])}</div></div>'
+                                f'<div><div class="dz-lab">Engagement rate</div><div class="dz-val">{pct(row["er"], 2)}</div></div>'
+                                f'<div><div class="dz-lab">Per 1,000 reached</div><div class="dz-val">{peso(row["cpr"], 2)}</div></div>'
+                                f'<div><div class="dz-lab">Click-through</div><div class="dz-val">{pct(row["ctr"], 2)}</div></div>'
+                                f'<div><div class="dz-lab">{"View-through" if pd.notna(row["thru_rate"]) else "Engagements"}</div>'
+                                f'<div class="dz-val">{pct(row["thru_rate"], 1) if pd.notna(row["thru_rate"]) else num(row["engagements"])}</div></div>'
+                                f'</div><div class="dz-topic" style="margin-top:8px">{link}</div></div>')
+                with st.expander("All designs in this view", icon=":material/table:"):
+                    tdf = pd.DataFrame({"Design": DZ["topic"].where(DZ["topic"] != "", DZ["ad_name"]), "Format": DZ["format"], "Goal": DZ["goal"], "Audience": DZ["audience"],
+                                        "Spend (₱)": DZ["spend"], "Impressions": DZ["impressions"], "Reach": DZ["reach"], "Engagement rate": DZ["er"],
+                                        "Click-through": DZ["ctr"], "Per 1,000 reached (₱)": DZ["cpr"], "Link": DZ["story_url"].replace("", None)})
+                    st.dataframe(tdf, hide_index=True, width="stretch", column_config={
+                        "Spend (₱)": st.column_config.NumberColumn(format="localized"), "Impressions": st.column_config.NumberColumn(format="localized"),
+                        "Reach": st.column_config.NumberColumn(format="localized"), "Engagement rate": st.column_config.NumberColumn(format="percent"),
+                        "Click-through": st.column_config.NumberColumn(format="percent"), "Per 1,000 reached (₱)": st.column_config.NumberColumn(format="%.2f"),
+                        "Link": st.column_config.LinkColumn(display_text="Open")})
+                st.caption("Results are for the months chosen in the sidebar, from Meta's ad-level data (ex-VAT spend). A design's reach is its own people reached; designs overlap, so do not add reach up across designs. "
+                           "Engagement rate = reactions, comments and shares divided by reach. Pictures are Meta's centred square previews, so tall or wide designs are cropped; open the post to see the full design. "
+                           "Compare designs of the same goal: reach and engagement campaigns are built for different results.")
 
 st.html(f'<div style="height:8px;background:{RED};margin-top:2rem"></div>')

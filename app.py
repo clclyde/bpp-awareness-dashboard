@@ -272,7 +272,7 @@ with st.sidebar:
             "- **Post views (impressions)**: Meta's Views of Facebook page posts: every time a post was shown or played, repeats included, organic and boosted posts together; not the number of people\n"
             "- **Ad impressions**: every time a Facebook ad was shown, repeats included (Meta's account totals); reach counts people\n"
             "- **Reach**: sum of the campaign reach rows of each monthly Ads Manager export. Campaigns overlap, so unique reach is lower. Multi-month ranges show the monthly average\n"
-            "- **Avg frequency**: impressions / reach over the month. The deck's alert level (3) is weekly\n"
+            "- **Frequency**: impressions / unique reach over the month (Meta's account-level count, each person once a month: our label is 'True frequency'). Months without that count use impressions / summed campaign reach ('Average frequency'). The deck's alert level (3) is weekly\n"
             "- **Cost per 1,000 reached**: ad spend / reach x 1,000\n"
             "- **Video view-through**: ThruPlays / impressions (Meta ThruPlay = 15 seconds or completion)\n"
             "- **Engagement rate**: engagements (reactions + comments + shares) / reach, for Facebook page posts\n"
@@ -300,6 +300,21 @@ chg = lambda a, b, k: None if b is None else change(a[k], b[k])
 pm = D.paid_monthly(ADS)
 pm = pm[(pm.index <= M1)].tail(12)
 pm = pm[pm.index < BUILT_MONTH] if M1 < BUILT_MONTH else pm          # the month still running is partial
+# Frequency: True frequency (impressions / Meta's unique reach, each person once a month) wherever account-level rows cover the months; the campaign-based
+# "Average frequency" only for months without them (before Oct 2025).
+_acct_months = set(S["acct"]["month"]) if len(S["acct"]) else set()
+
+
+def true_freq(a, b):
+    return D.account_period(S["acct"], a, b)["frequency"] if all(a + i in _acct_months for i in range((b - a).n + 1)) else float("nan")
+
+
+TF_CUR = true_freq(M0, M1)
+USE_TF = not pd.isna(TF_CUR)
+FREQ_LABEL = "True frequency" if USE_TF else "Average frequency"
+FREQ_CUR = TF_CUR if USE_TF else cur["frequency"]
+FREQ_CHG = (change(TF_CUR, true_freq(P0, P1)) if HAS_PRIOR and all(P0 + i in _acct_months for i in range((P1 - P0).n + 1)) else None) if USE_TF else chg(cur, pre, "frequency")
+FREQ_SERIES = pd.Series([true_freq(m, m) for m in pm.index], index=pm.index) if USE_TF else pm["frequency"]
 CHK = D.spend_check(ADS, S["ref"])
 GAPS = set(CHK[CHK["difference"] < -1].index)                          # Ads Manager export has less spend than the Ad Spend Report: probably incomplete
 
@@ -677,7 +692,7 @@ with tabs[0]:
     rc, cc = chg(cur, pre, "reach_avg"), chg(cur, pre, "cpr")
     if rc is not None and cc is not None:
         parts.append(f"That is {abs(rc):.1%} {'more' if rc >= 0 else 'less'} reach than {VS}, at a cost per 1,000 {'up' if cc >= 0 else 'down'} {abs(cc):.1%}, "
-                     f"with each person reached about {cur['frequency']:.1f} times on average.")
+                     f"with each person reached about {FREQ_CUR:.1f} times on average.")
     if org["posts"]:
         parts.append(f"Facebook posts reached {num(org['reach_per_post'])} people each with a {pct(org['er'], 2)} engagement rate; TikTok videos drew {num(tk['views'])} views.")
     parts.append("Reach adds up campaign reach, so the number of different people is lower.")
@@ -690,8 +705,9 @@ with tabs[0]:
     with c2:
         metric("Cost per 1,000 reached", peso(cur["cpr"], 2), chg(cur, pre, "cpr"), False, pm["cpr"], "Ad spend / reach x 1,000. Only fair between reach campaigns.")
     with c3:
-        metric("Average frequency", f"{cur['frequency']:.2f}" if not pd.isna(cur["frequency"]) else "n/a", chg(cur, pre, "frequency"), False, pm["frequency"],
-               "Impressions / reach over the month. The deck's alert level of 3 is weekly.")
+        metric(FREQ_LABEL, f"{FREQ_CUR:.2f}" if not pd.isna(FREQ_CUR) else "n/a", FREQ_CHG, False, FREQ_SERIES,
+               ("Impressions / unique reach: Meta's own count of different people the ads reached in the month (each person counted once a month). " if USE_TF else
+                "Impressions / reach over the month, with campaign reach added up. ") + "The deck's alert level of 3 is weekly.")
     d1, d2, d3 = st.columns(3)
     with d1:
         metric("Ad spend", peso(cur["spend"]), chg(cur, pre, "spend"), None, pm["spend"], f"{cur['campaigns']} campaigns. Ads Manager, ex-VAT.")
@@ -745,7 +761,7 @@ with tabs[1]:
     with a:
         trend("Reach", xs, pm["reach"], flags, lambda v: short(v), "%{y:,.0f}", ",.0f", key="tr1")
     with b:
-        trend("Average frequency", xs, pm["frequency"], flags, lambda v: f"{v:.2f}", "%{y:.2f}", ".1f", best="max", zero=True, key="tr2")
+        trend(FREQ_LABEL, xs, FREQ_SERIES, flags, lambda v: f"{v:.2f}", "%{y:.2f}", ".1f", best="max", zero=True, key="tr2")
     c, d = st.columns(2, gap="large")
     with c:
         trend("Cost per 1,000 reached", xs, pm["cpr"], flags, lambda v: peso(v, 2), "₱%{y:,.2f}", ",.0f", tickprefix="₱", best="min", key="tr3")

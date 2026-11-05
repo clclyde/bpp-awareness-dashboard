@@ -116,6 +116,14 @@ def build_report(S: dict, month: str | None, internal: bool) -> dict:
          "tv": D.top_tiktok(tt, m, m, 5), "partial": m >= pd.Period(S["built_at"], "M")}
     chg = lambda a, b, k: None if b is None else change(a[k], b[k])
     R["chg"] = {k: chg(cur, pre, k) for k in ("spend", "reach", "reach_avg", "frequency", "cpr", "thru_rate")}
+    # frequency: True frequency (impressions / Meta's unique account reach) when the month has an account-level row, else the campaign-based figure
+    _acct = S["acct"]
+    _am = set(_acct["month"]) if len(_acct) else set()
+    _tf = lambda x: D.account_period(_acct, x, x)["frequency"] if x in _am else float("nan")
+    _use = not pd.isna(_tf(m))
+    R["freq"] = {"true": _use, "label": "True frequency" if _use else "Average frequency", "cur": _tf(m) if _use else cur["frequency"],
+                 "chg": (change(_tf(m), _tf(p)) if has_prior and p in _am else None) if _use else R["chg"]["frequency"],
+                 "series": pd.Series([_tf(x) for x in pm.index], index=pm.index) if _use else pm["frequency"]}
     R["chg_org"] = {k: chg(org, org_p, k) for k in ("posts", "reach_per_post", "er", "views")}
     R["chg_tk"] = {k: chg(tk, tk_p, k) for k in ("videos", "views", "engagements", "eng_per_view")}
     # rule-based text, the same wording as the dashboard
@@ -125,7 +133,7 @@ def build_report(S: dict, month: str | None, internal: bool) -> dict:
     rc, cc = R["chg"]["reach"], R["chg"]["cpr"]
     if rc is not None and cc is not None:
         parts.append(f"That is {abs(rc):.1%} {'more' if rc >= 0 else 'less'} reach than {R['vs']}, at a cost per 1,000 {'up' if cc >= 0 else 'down'} {abs(cc):.1%}, "
-                     f"with each person reached about {cur['frequency']:.1f} times on average.")
+                     f"with each person reached about {R['freq']['cur']:.1f} times on average.")
     if org["posts"]:
         parts.append(f"Facebook posts reached {num(org['reach_per_post'])} people each with a {pct(org['er'], 2)} engagement rate; TikTok videos drew {num(tk['views'])} views.")
     parts.append("Reach adds up campaign reach, so the number of different people is lower.")
@@ -349,7 +357,7 @@ class Deck:
         s = self.slide("Brand awareness,", R["label"], "Paid awareness on Facebook, with the Facebook page posts (including boosted) and TikTok alongside")
         self.text(s, R["headline"], 0.6, 1.75, 11.6, 1.3, 30, bold=True, color=NAVY)
         self.text(s, R["standfirst"], 0.6, 3.2, 11.4, 1.1, 14, color=TEXT)
-        heroes = [("Reach", num(c["reach"]), ch["reach"], True), ("Cost per 1,000 reached", peso(c["cpr"], 2), ch["cpr"], False), ("Average frequency", f"{c['frequency']:.2f}", ch["frequency"], False)]
+        heroes = [("Reach", num(c["reach"]), ch["reach"], True), ("Cost per 1,000 reached", peso(c["cpr"], 2), ch["cpr"], False), (R["freq"]["label"], f"{R['freq']['cur']:.2f}", R["freq"]["chg"], False)]
         for i, (lab, val, chg_, hb) in enumerate(heroes):
             x = 0.6 + i * 4.1
             self.rect(s, x, 4.6, 3.8, 0.05, NAVY)
@@ -361,7 +369,7 @@ class Deck:
         # 3. paid awareness
         s = self.slide("Paid", "awareness", f"Facebook, Ads Manager, {R['label']}. Targets are pending sign-off, so nothing here is judged on target yet.")
         items = [("Ad spend", peso(c["spend"]), f"{c['campaigns']} campaigns", ch["spend"], None), ("Reach", num(c["reach"]), "Share of target audience: pending", ch["reach"], True),
-                 ("Average frequency", f"{c['frequency']:.2f}", "Monthly; alert above 3 is weekly", ch["frequency"], False), ("Cost per 1,000 reached", peso(c["cpr"], 2), "Target pending", ch["cpr"], False),
+                 (R["freq"]["label"], f"{R['freq']['cur']:.2f}", "Monthly; alert above 3 is weekly", R["freq"]["chg"], False), ("Cost per 1,000 reached", peso(c["cpr"], 2), "Target pending", ch["cpr"], False),
                  ("Video view-through", pct(c["thru_rate"], 1), "ThruPlays / impressions", ch["thru_rate"], True)]
         for i, (lab, val, line, chg_, hb) in enumerate(items):
             self.kpi(s, 0.6 + i * 2.45, 1.75, 2.3, lab, val, line, chg_, hb)
@@ -372,7 +380,7 @@ class Deck:
         s = self.slide("Awareness", "Trend", f"Paid awareness on Facebook by month, up to {R['label']}. Weekly reach and target audiences are not available yet, so months are shown.")
         cats = [m.strftime("%b %y") for m in pm.index]
         flags = [m in R["gaps"] for m in pm.index] if R["internal"] else None
-        specs = [("Reach (sum of campaign reach)", pm["reach"], "#,##0", short), ("Average frequency (impressions / reach)", pm["frequency"], "0.0", lambda v: f"{v:.2f}"),
+        specs = [("Reach (sum of campaign reach)", pm["reach"], "#,##0", short), (f"{R['freq']['label']} (impressions / {'unique ' if R['freq']['true'] else ''}reach)", R["freq"]["series"], "0.0", lambda v: f"{v:.2f}"),
                  ("Cost per 1,000 reached (₱)", pm["cpr"], "₱#,##0", lambda v: peso(v, 2)), ("Video view-through (ThruPlays / impressions)", pm["thru_rate"], "0%", lambda v: pct(v, 1))]
         for i, (title, vals, fmt, lab) in enumerate(specs):
             x, y = 0.6 + (i % 2) * 6.15, 1.65 + (i // 2) * 2.4
@@ -425,7 +433,7 @@ class Deck:
         tf = tb.text_frame; tf.word_wrap = True
         tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
         bullets = ["Reach is the sum of the campaign reach rows of the monthly Ads Manager export. Campaigns overlap, so unique reach is lower.",
-                   "Frequency is impressions / reach over the month. The deck's alert level of 3 is weekly.",
+                   "Frequency is impressions / unique reach over the month (Meta's account-level count; earlier months use campaign reach). The deck's alert level of 3 is weekly.",
                    "Cost per 1,000 reached = ad spend / reach x 1,000.",
                    "Engagement rate = reactions + comments + shares, divided by reach, for Facebook page posts.",
                    "Not available yet: weekly reach, target audiences (share of audience), follower growth, brand health.",

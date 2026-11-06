@@ -248,16 +248,17 @@ def trend(title, xs, ys, flags, label_fmt, hover_fmt, tickformat, tickprefix="",
 GOOD, FLAT = "#1E7D32", "#66717D"
 KC_CSS = f"""<style>
 .kc {{ font-family: {FONT}; color: {TEXT}; min-height: 132px; }}
-.kc-lab {{ font-size: 0.95rem; font-weight: 600; color: {TEXT}; margin-bottom: 6px; }}
+.kc-lab {{ font-size: 0.95rem; font-weight: 600; color: {TEXT}; margin-bottom: 6px; min-height: 2.8em; line-height: 1.4; }}
 .kc-hint {{ font-weight: 500; color: {MUTED}; font-size: 0.8rem; }}
-.kc-row {{ display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }}
-.kc-val {{ font-size: 2.3rem; font-weight: 700; color: {NAVY}; line-height: 1.1; font-variant-numeric: tabular-nums; }}
-.kc-sm .kc-val {{ font-size: 1.85rem; }}
+.kc-row {{ display: block; }}
+.kc-pillrow {{ margin-top: 8px; }}
+.kc-val {{ font-size: clamp(1.55rem, 2.3vw, 2.3rem); font-weight: 700; color: {NAVY}; line-height: 1.1; font-variant-numeric: tabular-nums; }}
+.kc-sm .kc-val {{ font-size: clamp(1.4rem, 1.9vw, 1.85rem); }}
 .kc-sm .kc-pill {{ font-size: 1.05rem; padding: 4px 10px; }}
 .kc-sm .kc-row {{ gap: 10px; }}
 .kc-pill {{ display: inline-block; padding: 5px 12px; border-radius: 6px; color: #FFFFFF; font-size: 1.2rem; font-weight: 700; line-height: 1.2;
            font-variant-numeric: tabular-nums; white-space: nowrap; }}
-.kc-prev {{ font-size: 1.02rem; margin-top: 10px; color: {TEXT}; }}
+.kc-prev {{ font-size: 1.02rem; margin-top: 10px; color: {TEXT}; min-height: 3.1em; line-height: 1.5; }}
 .kc-prev b {{ color: {NAVY}; }}
 .kc-abs {{ color: {MUTED}; margin-left: 6px; white-space: nowrap; }}
 .kc-foot {{ font-size: 0.82rem; color: {MUTED}; margin-top: 8px; line-height: 1.35; }}
@@ -277,11 +278,15 @@ def kpi_card(label, a, b, fmt, diff_fmt, higher_better=True, vs="first period", 
     d = None if (pd.isna(a) or pd.isna(b) or not compared) else round(b, rnd) - round(a, rnd)
     prev = f'vs <b>{fmt(a)}</b> · {vs}' + (f'<span class="kc-abs">({diff_fmt(d)})</span>' if d is not None else "")
     with st.container(border=True, height="stretch", key=card_key()):   # fills its column, so cards in one row end at the same height
-        st.html(f'<div class="kc{"" if series is not None else " kc-sm"}"><div class="kc-lab">{label}' + (f' <span class="kc-hint">· {hint}</span>' if hint else "") + '</div>'
-                f'<div class="kc-row"><span class="kc-val">{fmt(b)}</span>{pill}</div><div class="kc-prev">{note or prev}</div>'
+        # Fixed order and fixed heights, so the same part of every card sits at the same place: title (two lines), value, change pill (always its own row),
+        # previous value (two lines), sparkline, then the explanation in small grey text at the bottom.
+        st.html(f'<div class="kc{"" if series is not None else " kc-sm"}"><div class="kc-lab">{label}</div>'
+                f'<div class="kc-row"><div class="kc-val">{fmt(b)}</div><div class="kc-pillrow">{pill}</div></div><div class="kc-prev">{note or prev}</div>'
                 + (f'<div class="kc-foot">{foot}</div>' if foot else "") + '</div>')
         if series is not None:
             sparkline(series, flags, key)
+        if hint:
+            st.caption(hint)
 
 
 def sparkline(series, flags, key):

@@ -474,18 +474,27 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None, tt_platform=None)
                   card("Cost per click", ua["cpc"], ub["cpc"], False, "peso2", "lower is better")] if (ua["clicks_ok"] and ub["clicks_ok"]) else []
     pa, pb = platform_period(tt_platform, a0, a1), platform_period(tt_platform, b0, b1)
     platform = [card(PLATFORM_METRICS[k], pa[k], pb[k], True, "num", "platform analytics, figure of the whole period") for k in PLATFORM_METRICS if k in pa and k in pb]
+    # The five figures of the Y1 Overview slide lead the first group, in the slide's order: total reach, engagements, impressions, TikTok video views, TikTok engagements
+    # (the TikTok analytics figure of the whole period when the team supplied it for these periods, else the sum over the videos posted).
+    tt_eng = [c for c in platform if c["label"] == "TikTok engagements"] or [
+        card("TikTok engagements (videos)", ta["engagements"], tb["engagements"], True, "num", "likes, comments and shares on the videos posted",
+             series=lambda m: tiktok(tt, m, m)["engagements"], compared=tt_ok)]
+    platform = [c for c in platform if c["label"] != "TikTok engagements"]
+    slide = ([card("Total reach", ca["reach"], cb["reach"], True, "num", "sum of the monthly campaign reach, Facebook ads", series=lambda m: paid(ads, m, m)["reach"], paid_series=True),
+              card("Ad post engagements", ua["engagements"], ub["engagements"], True, "num", "Facebook ads, as counted by Ads Manager", series=lambda m: unit_costs(ads, m, m)["engagements"], paid_series=True)]
+             + ad_impr
+             + [card("TikTok video views", ta["views"], tb["views"], True, "num", series=lambda m: tiktok(tt, m, m)["views"], compared=tt_ok)]
+             + tt_eng)
     groups = [
         ("Audience Growth", [
+            slide,
             [card("Average reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads, monthly average of the campaign reach", series=lambda m: paid(ads, m, m)["reach"], paid_series=True)]
             + new_follows + [card("Average reach per Facebook post", oa["reach_per_post"], ob["reach_per_post"], True, "num", series=lambda m: organic(posts, m, m)["reach_per_post"]),
              card("Facebook post views (impressions)", oa["views"], ob["views"], True, "num", "Meta Views: every time a page post was shown or played, repeats included. Organic and boosted posts together. Not the number of people.", series=lambda m: organic(posts, m, m)["views"]),
-             ],
-            [card("TikTok video views", ta["views"], tb["views"], True, "num", series=lambda m: tiktok(tt, m, m)["views"], compared=tt_ok),
-             card("Total reach", ca["reach"], cb["reach"], True, "num", "sum of the monthly campaign reach, Facebook ads", series=lambda m: paid(ads, m, m)["reach"], paid_series=True)] + ad_impr + unique]
-            + ([platform] if platform else [])),
+             ]]
+            + ([unique + platform] if (unique or platform) else [])),
         ("More From Every Peso Spent", [
-            [card("Ad post engagements", ua["engagements"], ub["engagements"], True, "num", "Facebook ads, as counted by Ads Manager", series=lambda m: unit_costs(ads, m, m)["engagements"], paid_series=True),
-             card("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], True, "num", "higher is better", series=lambda m: unit_costs(ads, m, m)["eng_per_k"], paid_series=True),
+            [card("Engagements per ₱1,000", ua["eng_per_k"], ub["eng_per_k"], True, "num", "higher is better", series=lambda m: unit_costs(ads, m, m)["eng_per_k"], paid_series=True),
              card("Cost per engagement", ua["cpe"], ub["cpe"], False, "peso3", "lower is better", series=lambda m: unit_costs(ads, m, m)["cpe"], paid_series=True),
              card("Cost per mille (CPM)", ua["cpm"], ub["cpm"], False, "peso2", "lower is better", series=lambda m: unit_costs(ads, m, m)["cpm"], paid_series=True)],
             follows_per_k + [card("Ad engagement rate", ua["er_impr"], ub["er_impr"], True, "rate", "engagements / impressions"),

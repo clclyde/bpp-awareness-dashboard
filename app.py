@@ -312,24 +312,52 @@ def signed(fmt):
     return lambda d: ("+" if d >= 0 else "−") + fmt(abs(d))
 
 
-# ---------- sidebar: month range ----------
+# ---------- month range: one range shared by Overview, Awareness Trend, Content and Ad Designs, picked inside each of those tabs ----------
+# (the other tabs have their own "Current month" selector). The four pickers stay in step: changing one changes all four on the next run.
 def _presets():
     ytd0 = max(m for m in MONTHS if m.year == LAST.year and m.month == 1) if any(m.year == LAST.year and m.month == 1 for m in MONTHS) else MONTHS[0]
     return {"Last full month": (LAST, LAST), "Last 3 months": (LAST - 2, LAST), f"Year to date ({LAST.year})": (ytd0, LAST), "All data": (MONTHS[0], MONTHS[-1])}
 
 
-def _on_preset():
-    st.session_state["m0"], st.session_state["m1"] = _presets()[st.session_state["preset"]]
+RNG_TABS = ("ov", "tr", "ct", "dz")
+PRESET_NAMES = list(_presets())
 
 
-st.session_state.setdefault("m0", LAST)
-st.session_state.setdefault("m1", LAST)
+def _rng_sync(tag, which):
+    ss = st.session_state
+    if which == "preset":
+        a, b = _presets().get(ss[f"preset_{tag}"], (ss["rng_m0"], ss["rng_m1"]))   # 'Custom' keeps the range as it is
+    else:
+        a, b = ss[f"m0_{tag}"], ss[f"m1_{tag}"]
+        if a > b:
+            a, b = (a, a) if which == "m0" else (b, b)
+    ss["rng_m0"], ss["rng_m1"] = a, b
+    custom = which != "preset" or ss[f"preset_{tag}"] not in _presets()
+    for t in RNG_TABS:
+        ss[f"m0_{t}"], ss[f"m1_{t}"] = a, b
+        ss[f"preset_{t}"] = "Custom" if custom else ss[f"preset_{tag}"]
+
+
+st.session_state.setdefault("rng_m0", LAST)
+st.session_state.setdefault("rng_m1", LAST)
+for _t in RNG_TABS:
+    st.session_state.setdefault(f"m0_{_t}", st.session_state["rng_m0"])
+    st.session_state.setdefault(f"m1_{_t}", st.session_state["rng_m1"])
+    st.session_state.setdefault(f"preset_{_t}", "Last full month")
+
+
+def range_bar(tag):
+    """The month range of this tab (shared with the other three analysis tabs)."""
+    c1, c2, c3, c4 = st.columns([1.1, 1, 1, 2], vertical_alignment="bottom")
+    c1.selectbox("Quick range", PRESET_NAMES + ["Custom"], key=f"preset_{tag}", on_change=_rng_sync, args=(tag, "preset"))
+    c2.selectbox("From month", MONTHS, key=f"m0_{tag}", format_func=mlabel, on_change=_rng_sync, args=(tag, "m0"))
+    c3.selectbox("To month", MONTHS, key=f"m1_{tag}", format_func=mlabel, on_change=_rng_sync, args=(tag, "m1"))
+    c4.caption("These months are shared by Overview, Awareness Trend, Content and Ad Designs. The other tabs have their own selectors.")
+    if M1 >= BUILT_MONTH:
+        st.warning(f"{mlabel(M1)} was still running when the data was loaded ({S['built_at']:%d %b}): its numbers are partial.", icon=":material/schedule:")
+
+
 with st.sidebar:
-    st.subheader("Reporting Months")
-    st.selectbox("Quick range", list(_presets()), key="preset", on_change=_on_preset)
-    st.selectbox("From month", MONTHS, key="m0", format_func=mlabel)
-    st.selectbox("To month", MONTHS, key="m1", format_func=mlabel)
-    st.caption("The Ads Manager exports are monthly, so this view works in whole months.")
     INTERNAL = st.toggle("Internal view", key="internal", help="Adds the data source and the data-quality check (Ads Manager vs Ad Spend Report). Leave it off when presenting to the client. "
                          "It is a display switch, not security: anyone with the link can turn it on.")
     if INTERNAL:
@@ -350,10 +378,9 @@ with st.sidebar:
             "- **Not in the SSOT yet**: weekly reach, target audiences (share of audience), follower growth, brand health"
         )
 
-M0, M1 = st.session_state["m0"], st.session_state["m1"]
+M0, M1 = st.session_state["rng_m0"], st.session_state["rng_m1"]
 if M0 > M1:
-    st.info("Pick a start month that is not after the end month.")
-    st.stop()
+    M0, M1 = M1, M0
 P0, P1 = D.prior_months(M0, M1)
 RANGE = mlabel(M0) if M0 == M1 else f"{mlabel(M0)} to {mlabel(M1)}"
 VS = mlabel(P0) if P0 == P1 else f"prior {(M1 - M0).n + 1} months"
@@ -397,9 +424,6 @@ if LOGO.exists():
     _logo_img = f'<img alt="BPP logo" src="data:image/jpeg;base64,{base64.b64encode(LOGO.read_bytes()).decode()}">'
 st.html(f'<div class="bpp-hero">{_logo_img}<div><div class="ht">BPP · Budol-Proof Pinoy</div><div class="hs">Brand awareness review</div></div>'
         f'<div class="hr">Data as of<br><b>{S["built_at"]:%d %b %Y}</b></div></div>')
-if M1 >= BUILT_MONTH:
-    st.warning(f"{mlabel(M1)} was still running when the data was loaded ({S['built_at']:%d %b}): its numbers are partial.", icon=":material/schedule:")
-
 # Period selectors: 1 compares one month with the next ("month by month"); 3, 4 and 6 compare two blocks of months.
 PERIOD_OPTIONS = [1, 3, 4, 6]
 
@@ -414,6 +438,18 @@ def period_names(n):
 
 def month_range(a, b):
     return mlabel(a) if a == b else f"{mlabel(a)} to {mlabel(b)}"
+
+
+def current_month_start(col, tag, n, months):
+    """'Current month' selector: the last month of the current period (the n months ending with it); the n months before are the comparison.
+    Returns the first month of the comparison period. Opens on the latest full month."""
+    ends = [m for i, m in enumerate(months) if i >= 2 * n - 1]
+    key = f"{tag}_cur"
+    if st.session_state.get(f"{tag}_n_prev") != n or st.session_state.get(key) not in ends:
+        st.session_state[f"{tag}_n_prev"], st.session_state[key] = n, ends[-1]
+    cur_m = col.selectbox("Current month", ends, key=key, format_func=mlabel,
+                          help="The last month of the current period. The period of the same length just before it is what it is compared with.")
+    return cur_m - (2 * n - 1)
 
 
 def default_start(starts, n):
@@ -710,12 +746,9 @@ with tab_cards:
     KN = k1.selectbox("Months per period", PERIOD_OPTIONS, index=3, key="kc_n", format_func=period_label,
                       help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
     banner("Brand Awareness KPIs: Month by Month" if KN == 1 else "Brand Awareness KPIs: First Half vs Second Half")
-    K_STARTS = [m for i, m in enumerate(LASTM) if i + 2 * KN <= len(LASTM)]
-    if st.session_state.get("kc_n_prev") != KN or st.session_state.get("kc_start") not in K_STARTS:
-        st.session_state["kc_n_prev"], st.session_state["kc_start"] = KN, default_start(K_STARTS, KN)
-    KA0 = k2.selectbox("First month starts" if KN == 1 else "First period starts", K_STARTS, key="kc_start", format_func=mlabel)
+    KA0 = current_month_start(k2, "kc", KN, LASTM)
     KA1, KB0, KB1 = KA0 + (KN - 1), KA0 + KN, KA0 + (2 * KN - 1)
-    k3.caption("This view has its own period selector, like the First vs Second Half tab.")
+    k3.caption("This tab has its own selector: it compares the current month (or the months ending with it) with the same number of months just before.")
     _ka, _kb = period_names(KN)
     KVS = _ka.lower()
     KMONTHS = [KA0 + i for i in range(2 * KN)]
@@ -780,6 +813,7 @@ with tab_cards:
 # ===== Overview =====
 with tabs[0]:
     banner("Overview", RANGE)
+    range_bar("ov")
     reach_now = cur["reach"] if cur["months"] == 1 else cur["reach_avg"]
     if pd.isna(reach_now) or pd.isna(cur["cpr"]):
         st.title(f"Brand Awareness, {RANGE}")
@@ -855,6 +889,7 @@ with tabs[0]:
 # ===== Awareness trend =====
 with tabs[1]:
     banner("How Awareness Moved, Month by Month", f"Up to {mlabel(M1)}")
+    range_bar("tr")
     st.markdown(f"Paid awareness on Facebook up to {mlabel(M1)}. Weekly reach and target audiences are not in the SSOT yet, so the unit is the month.")
     xs = [m.to_timestamp() for m in pm.index]
     flags = [INTERNAL and m in GAPS for m in pm.index]
@@ -896,6 +931,7 @@ with tabs[1]:
 # ===== Content =====
 with tabs[2]:
     banner("What People Saw and Engaged With", RANGE)
+    range_bar("ct")
     st.markdown(f"Facebook page posts and TikTok videos published in {RANGE}.")
     tp = D.top_posts(POSTS, M0, M1, 10)
     bt = D.by_post_type(POSTS, M0, M1)
@@ -954,16 +990,12 @@ with tabs[3]:
     cs1, cs2, cs3 = st.columns([1, 1, 2], vertical_alignment="bottom")
     CN = cs1.selectbox("Months per period", PERIOD_OPTIONS, index=3, key="ch_n", format_func=period_label,
                        help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
-    _starts = [m for i, m in enumerate(_lm) if i + 2 * CN <= len(_lm)]
-    _default_start = _starts[-1] if CN == 1 else (pd.Period("2025-10", "M") if pd.Period("2025-10", "M") in _starts else _starts[0])   # month by month opens on the last two months
-    if st.session_state.get("ch_n_prev") != CN or st.session_state.get("ch_start") not in _starts:
-        st.session_state["ch_n_prev"], st.session_state["ch_start"] = CN, _default_start
-    CA0 = cs2.selectbox("First month starts" if CN == 1 else "First period starts", _starts, key="ch_start", format_func=mlabel)
+    CA0 = current_month_start(cs2, "ch", CN, _lm)
     CA1, CB0, CB1 = CA0 + (CN - 1), CA0 + CN, CA0 + (2 * CN - 1)
     C_A, C_B = (f"First {CN} Months", f"Next {CN} Months") if CN > 1 else ("First Month", "Next Month")
     _rng = lambda a, b: mlabel(a) if a == b else f"{mlabel(a)} to {mlabel(b)}"
     C_ARNG, C_BRNG = _rng(CA0, CA1), _rng(CB0, CB1)
-    cs3.caption("This view has its own period selector. The sidebar months drive the Overview, Awareness Trend and Content tabs.")
+    cs3.caption("This tab has its own selector: it compares the current month (or the months ending with it) with the same number of months just before.")
 
     def status_of(chg, lower_is_better=True):
         """Efficiency status from the change in one metric vs the first period (the PediaWell thresholds, proposed and still to be calibrated)."""
@@ -1091,6 +1123,7 @@ with tabs[3]:
 # ===== Ad Designs: the ads themselves (picture, topic, results), best first =====
 with tabs[4]:
     banner("Ad Designs", RANGE)
+    range_bar("dz")
     CR = load_creatives(_conf)
     if CR is None:
         st.info("The ad designs are not loaded yet. They come from Meta's ad data once a week; this tab fills in after the first load.", icon=":material/image:")

@@ -128,7 +128,7 @@ def build_report(S: dict, month: str | None, internal: bool) -> dict:
     R["chg_org"] = {k: chg(org, org_p, k) for k in ("posts", "reach_per_post", "er", "views")}
     R["chg_tk"] = {k: chg(tk, tk_p, k) for k in ("videos", "views", "engagements", "eng_per_view")}
     # rule-based text, the same wording as the dashboard
-    R["headline"] = (f"Facebook paid reach hit {short(cur['reach'])} in {R['label']}, at {peso(cur['cpr'], 2)} per 1,000 reached."
+    R["headline"] = (f"Meta paid reach hit {short(cur['reach'])} in {R['label']}, at {peso(cur['cpr'], 2)} per 1,000 reached."
                      if not (pd.isna(cur["reach"]) or pd.isna(cur["cpr"])) else f"Brand awareness, {R['label']}")
     parts = []
     rc, cc = R["chg"]["reach"], R["chg"]["cpr"]
@@ -477,8 +477,8 @@ class HalvesDeck(Deck):
     def name(self, c):
         return self.NAMES.get(c["label"], c["label"])
 
-    TAGS = {"Average reach per month": "FACEBOOK ADS", "Facebook followers": "FACEBOOK PAGE", "New Facebook follows": "FACEBOOK PAGE", "Average reach per Facebook post": "FACEBOOK PAGE", "Facebook post views (impressions)": "FACEBOOK PAGE", "TikTok video views": "TIKTOK",
-            "New follows per ₱1,000": "FACEBOOK PAGE + ADS", "Engagements per ₱1,000": "FACEBOOK ADS", "Cost per engagement": "FACEBOOK ADS", "Cost per mille (CPM)": "FACEBOOK ADS"}
+    TAGS = {"Average reach per month": "META ADS", "Facebook followers": "FACEBOOK PAGE", "New Facebook follows": "FACEBOOK PAGE", "Average reach per Facebook post": "FACEBOOK PAGE", "Facebook post views (impressions)": "FACEBOOK PAGE", "TikTok video views": "TIKTOK",
+            "New follows per ₱1,000": "FACEBOOK PAGE + META ADS", "Engagements per ₱1,000": "META ADS", "Cost per engagement": "META ADS", "Cost per mille (CPM)": "META ADS"}
 
     # --- primitives ---
     def box(self, s, x, y, w, h, fill, line=None, adj=0.04):
@@ -734,10 +734,10 @@ class HalvesDeck(Deck):
                     if R["S"].get("fb_followers_api") else
                     ("Facebook followers, TikTok followers, TikTok reach and TikTok engagements are the platforms' own figures for each period, supplied by the team (they are not sums of posts or videos, and TikTok reach is not the same as TikTok video views). "
                      "New Facebook follows is the total of the daily new follows in Meta Business Suite for the months of the period. It is counted before unfollows: unfollows are only known for the whole year, "
-                     "so net new followers per period cannot be shown. ")) + "Total reach adds up the monthly campaign reach of the Facebook ads, so people reached in several months or by several campaigns are counted each time. "
+                     "so net new followers per period cannot be shown. ")) + "Total reach adds up the monthly campaign reach of the Meta ads, so people reached in several months or by several campaigns are counted each time. "
                  "Unique reach per month is Meta's own count of different people the ads reached in a month (account-level report), averaged over the period. Reach per Facebook post is the average reach of the posts published in the period (lifetime numbers as exported); Facebook page posts include boosted posts. "
                  "Post views (impressions) are Meta's Views of the page posts published in the period: every time a post was shown or played, repeats included, organic and boosted posts together, so they are not a number of people and not purely organic. "
-                 "Ad impressions are every time a Facebook ad was shown (Meta's account totals). TikTok video views are totals for the period. Reach per ₱1,000 still uses campaign reach from Ads Manager, which adds up campaigns, so the number of different people is lower. "
+                 "Ad impressions are every time a Meta ad was shown (Meta's account totals). TikTok video views are totals for the period. Reach per ₱1,000 still uses campaign reach from Ads Manager, which adds up campaigns, so the number of different people is lower. "
                  "Reach and impressions per ₱1,000 show how much distribution each ₱1,000 of ad spend bought. TikTok engagement per view is likes, comments and shares divided by views.")
         table_h = 1.4
         if (self.R["layout"] != "halves" and len(rows) > 5) or (self.R["layout"] == "halves" and len(big) + len(rows) > 12):    # no room for the note bar under that many cards: a short form joins the footnote
@@ -758,15 +758,15 @@ class HalvesDeck(Deck):
         worse = [c for c in rows if c["better"] is True and c["compared"] and (change(c["b"], c["a"]) or 0) < -0.02]
         if worse:   # the orange figures, said once in words so the headline does not read as all good news
             sub += f" {len(worse)} of the figures below went down."
-        foot = ("Source: Facebook Ads Manager monthly exports, ad spend ex-VAT; click-through rate, cost per click and true frequency use Meta's account-level monthly totals. "
+        foot = ("Source: Meta Ads Manager monthly exports, ad spend ex-VAT; click-through rate, cost per click and true frequency use Meta's account-level monthly totals. "
                 "Reach per ₱1,000 and cost per 1,000 reached use campaign reach, which adds up people who saw several campaigns. New follows per ₱1,000 is all new page follows "
-                "(Meta Business Suite, before unfollows) divided by Facebook ad spend, so it includes follows that did not come from ads. Ad post engagements are the post engagements of the Facebook ads as counted by Ads Manager. "
+                "(Meta Business Suite, before unfollows) divided by Meta ad spend, so it includes follows that did not come from ads. Ad post engagements are the post engagements of the Meta ads as counted by Ads Manager. "
                 "The difference of a rate is in percentage points (pts).")
         if R["internal"]:
             foot += (" INTERNAL: the daily follows total is about 4% above what Meta's whole-period audience figures imply (unexplained); treat new follows as approximate.")
-        notes = ("Same reading as the previous slide. New follows per ₱1,000, engagements per ₱1,000 and impressions per ₱1,000 are what each ₱1,000 of Facebook ad spend bought (higher is better). "
-                 "New follows per ₱1,000 divides all new page follows, organic and paid, by Facebook ad spend, so it is not the cost of a follower from ads. "
-                 "Ad post engagements is the total number of post engagements of the Facebook ads as counted by Ads Manager. "
+        notes = ("Same reading as the previous slide. New follows per ₱1,000, engagements per ₱1,000 and impressions per ₱1,000 are what each ₱1,000 of Meta ad spend bought (higher is better). "
+                 "New follows per ₱1,000 divides all new page follows, organic and paid, by Meta ad spend, so it is not the cost of a follower from ads. "
+                 "Ad post engagements is the total number of post engagements of the Meta ads as counted by Ads Manager. "
                  "Cost per engagement, cost per mille (CPM, cost per 1,000 impressions) and cost per 1,000 reached are what each result cost (lower is better). "
                  "Ad engagement rate is post engagements divided by impressions. Click-through rate is clicks divided by impressions and cost per click is spend divided by clicks, both from Meta's account-level monthly totals. "
                  "True frequency is impressions divided by unique reach. Ad spend per month and true frequency are context, not good or bad, so they stay grey. "

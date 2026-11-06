@@ -365,8 +365,9 @@ with st.sidebar:
     with st.expander("How the numbers are defined", icon=":material/info:"):
         st.markdown(
             "Follows the Marketing 3.0 KPI deck, Paid awareness module.\n"
+            "- **Meta ads**: every placement of the BPP ad account in Meta Ads Manager, as Ads Manager reports them. Most of it runs on Facebook (about 94% of the spend from Oct 2025 to early Nov 2026); Instagram took about 4% over that time but is growing (about 15% of the spend in Oct 2026), with small amounts on Audience Network and Threads. The exports do not split by platform, so all figures here are Meta ads, not Facebook only (checked with Meta, 6 Nov 2026)\n"
             "- **Post views (impressions)**: Meta's Views of Facebook page posts: every time a post was shown or played, repeats included, organic and boosted posts together; not the number of people\n"
-            "- **Ad impressions**: every time a Facebook ad was shown, repeats included (Meta's account totals); reach counts people\n"
+            "- **Ad impressions**: every time a Meta ad was shown, repeats included (Meta's account totals); reach counts people\n"
             "- **Reach**: sum of the campaign reach rows of each monthly Ads Manager export. Campaigns overlap, so unique reach is lower. Multi-month ranges show the monthly average\n"
             "- **Frequency**: impressions / unique reach over the month (Meta's account-level count, each person once a month: our label is 'True frequency'). Months without that count use impressions / summed campaign reach ('Average frequency'). The deck's alert level (3) is weekly\n"
             "- **Cost per 1,000 reached**: ad spend / reach x 1,000\n"
@@ -505,7 +506,7 @@ with tab_cmp:
     intro = []
     if rc is not None and not pd.isna(ca["reach_avg"]):
         _rg = f"{abs(rc):.1%} {'higher' if rc >= 0 else 'lower'} than" if abs(rc) >= 0.005 else "level with"
-        intro.append(f"Facebook ads reached an average of {num(cb['reach_avg'])} a month, {_rg} the {num(ca['reach_avg'])} of the {A_NAME.lower()}.")
+        intro.append(f"Meta ads reached an average of {num(cb['reach_avg'])} a month, {_rg} the {num(ca['reach_avg'])} of the {A_NAME.lower()}.")
     if None not in (rp, pv, er):
         intro.append(f"On the Facebook page, reach per post {mv(rp)} ({num(oa['reach_per_post'])} to {num(ob['reach_per_post'])}) and post views {mv(pv)}"
                      f"{', while' if (er < 0) != (min(rp, pv) < 0) else ', and'} the engagement rate {mv(er)} ({pct(oa['er'], 2)} to {pct(ob['er'], 2)}).")
@@ -519,9 +520,9 @@ with tab_cmp:
                      f"and engagements per ₱1,000 {'rose' if ek >= 0 else 'fell'} **{abs(ek):.1%}** ({num(ua['eng_per_k'])} to {num(ub['eng_per_k'])}).")
     if rc is not None and cc is not None:
         _rf = short if short(ca["reach_avg"]) != short(cb["reach_avg"]) else num    # "1.0 million to 1.0 million" says nothing, so use the full numbers
-        intro.append(f"In Facebook paid awareness, reach per month {'grew' if rc >= 0 else 'fell'} **{abs(rc):.1%}**, from {_rf(ca['reach_avg'])} to {_rf(cb['reach_avg'])}. "
+        intro.append(f"In Meta paid awareness, reach per month {'grew' if rc >= 0 else 'fell'} **{abs(rc):.1%}**, from {_rf(ca['reach_avg'])} to {_rf(cb['reach_avg'])}. "
                      f"Cost per 1,000 reached went {'down' if cc <= 0 else 'up'} **{abs(cc):.1%}**, from {peso(ca['cpr'], 2)} to {peso(cb['cpr'], 2)}"
-                     + (f", and monthly Facebook ad spend {'dropped' if sc < 0 else 'rose'} {abs(sc):.1%} ({peso(spm_a)} to {peso(spm_b)})." if sc is not None else "."))
+                     + (f", and monthly Meta ad spend {'dropped' if sc < 0 else 'rose'} {abs(sc):.1%} ({peso(spm_a)} to {peso(spm_b)})." if sc is not None else "."))
     if intro:
         st.markdown(" ".join(intro))
     if INTERNAL:
@@ -563,7 +564,7 @@ with tab_cmp:
         _items.insert(_ix["fb"], _pf_item("fb_followers", ("Followers of the Facebook page on the last day of the period (Meta page insights). Higher is better." if S.get("fb_followers_api")
                                                       else "Followers of the Facebook page, figure of the whole period (supplied by the team). Higher is better.")))
     if not pd.isna(ca["reach_avg"]) and not pd.isna(cb["reach_avg"]):     # the monthly reach of the ads leads the section
-        _items.insert(0, ("Average reach per month", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, "Facebook ads: the monthly average of the campaign reach rows, so people who saw several campaigns are counted more than once. Higher is better.", None, None))
+        _items.insert(0, ("Average reach per month", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, "Meta ads: the monthly average of the campaign reach rows, so people who saw several campaigns are counted more than once. Higher is better.", None, None))
     with fl:
         st.markdown(f"**{A_TITLE}** · {A_RNG}")
         for k in range(0, len(_items), 2):
@@ -585,7 +586,7 @@ with tab_cmp:
 
     # ----- cost efficiency: unit costs, and what the same budget bought -----
     st.subheader("Cost Efficiency")
-    st.caption("Paid Facebook ads (Ads Manager). Unit costs (top rows) should go down; what each ₱1,000 of spend buys (bottom rows) should go up. Together they show whether the same budget delivers more.")
+    st.caption("Paid Meta ads (Ads Manager). Unit costs (top rows) should go down; what each ₱1,000 of spend buys (bottom rows) should go up. Together they show whether the same budget delivers more.")
     _vs_ef = A_NAME.lower()
     _cost_rows = [("Cost per engagement", "cpe", 3, "Ad spend / post engagements (reactions, comments, shares, clicks as counted by Ads Manager). Lower is better."),
                   ("Cost per mille (CPM)", "cpm", 2, "Cost per 1,000 impressions = ad spend / impressions x 1,000. Lower is better."),
@@ -594,7 +595,7 @@ with tab_cmp:
         _cost_rows.append(("Cost per click", "cpc", 2, "Ad spend / clicks (all). Lower is better."))
     if ua["tp_ok"] and ub["tp_ok"]:
         _cost_rows.append(("Cost per ThruPlay", "cptp", 3, "Video ad spend / ThruPlays (15 seconds or completion). Lower is better."))
-    _out_rows = ([("New follows per ₱1,000", "fol_per_k", "All new follows of the Facebook page (before unfollows) for every ₱1,000 of Facebook ad spend. Higher is better.")] if FOL_OK else []) + [
+    _out_rows = ([("New follows per ₱1,000", "fol_per_k", "All new follows of the Facebook page (before unfollows) for every ₱1,000 of Meta ad spend. Higher is better.")] if FOL_OK else []) + [
                  ("Engagements per ₱1,000", "eng_per_k", "Post engagements for every ₱1,000 of ad spend. Higher is better."),
                  ("Impressions per ₱1,000", "impr_per_k", "Impressions delivered for every ₱1,000 of ad spend. Higher is better."),
                  ("Reach per ₱1,000", "reach_per_k", "Reach for every ₱1,000 of ad spend. Higher is better.")]
@@ -642,7 +643,7 @@ with tab_cmp:
 
     pm_all = D.paid_monthly(ADS)
     sa, sb = pm_all.loc[A0:A1], pm_all.loc[B0:B1]
-    st.subheader("Paid Awareness on Facebook")
+    st.subheader("Paid Awareness on Meta")
     box = st.container(border=True)                                      # one row per metric so each pair sits level
     hl, hr = box.columns(2, gap="large")
     hl.subheader(A_TITLE)
@@ -653,7 +654,7 @@ with tab_cmp:
     er_m = lambda ser: [D.unit_costs(ADS, m, m)["er_impr"] for m in ser.index]   # monthly ad engagement rate, for the sparkline
     _paid_rows = [("Average reach per month", num(ca["reach_avg"]), num(cb["reach_avg"]), rc, True, sa["reach"], sb["reach"], "Sum of the campaign reach rows, so people who saw several campaigns are counted more than once."),
                   ("Ad engagement rate", pct(ua["er_impr"], 2), pct(ub["er_impr"], 2), change(ub["er_impr"], ua["er_impr"]), True, er_m(sa), er_m(sb),
-                   "Post engagements / impressions of the Facebook ads. Higher is better."),
+                   "Post engagements / impressions of the Meta ads. Higher is better."),
                   ("Cost per 1,000 reached", peso(ca["cpr"], 2), peso(cb["cpr"], 2), cc, False, sa["cpr"], sb["cpr"], "Ad spend / reach x 1,000. Lower is better."),
                   ("Ad spend (per month)", peso(spm_a), peso(spm_b), sc, None, sa["spend"], sb["spend"], "Ads Manager, ex-VAT.")]
     if ACCT_OK:     # Meta's account-level totals: each person counted once a month, clicks for every month
@@ -673,10 +674,10 @@ with tab_cmp:
     _ai_a, _ai_b = (xa["impressions"], xb["impressions"]) if ACCT_OK else (ca["impressions"], cb["impressions"])
     _after("Total reach", ("Ad impressions", num(_ai_a), num(_ai_b), change(_ai_b, _ai_a), True, [(_am.loc[m]["impressions"] if ACCT_OK else D.paid(ADS, m, m)["impressions"]) for m in sa.index],
                            [(_am.loc[m]["impressions"] if ACCT_OK else D.paid(ADS, m, m)["impressions"]) for m in sb.index],
-                           "Every time a Facebook ad was shown (Meta's account totals when they cover the whole period), repeats included. Higher is more delivery, not necessarily better."))
+                           "Every time a Meta ad was shown (Meta's account totals when they cover the whole period), repeats included. Higher is more delivery, not necessarily better."))
     _after("Ad engagement rate", ("Ad post engagements", num(ua["engagements"]), num(ub["engagements"]), change(ub["engagements"], ua["engagements"]), True,
                                   [D.unit_costs(ADS, m, m)["engagements"] for m in sa.index], [D.unit_costs(ADS, m, m)["engagements"] for m in sb.index],
-                                  "Post engagements of the Facebook ads as counted by Ads Manager. Higher is better."))
+                                  "Post engagements of the Meta ads as counted by Ads Manager. Higher is better."))
     for label, va, vb, ch, better, sera, serb, hp in _paid_rows:
         ml, mr = box.columns(2, gap="large")
         with ml:
@@ -839,7 +840,7 @@ with tabs[0]:
     if pd.isna(reach_now) or pd.isna(cur["cpr"]):
         st.title(f"Brand Awareness, {RANGE}")
     else:
-        lead = f"Facebook paid reach hit {short(reach_now)} in {RANGE}" if cur["months"] == 1 else f"Facebook paid reach averaged {short(reach_now)} a month, {RANGE}"
+        lead = f"Meta paid reach hit {short(reach_now)} in {RANGE}" if cur["months"] == 1 else f"Meta paid reach averaged {short(reach_now)} a month, {RANGE}"
         st.title(f"{lead}, at {peso(cur['cpr'], 2)} per 1,000 reached.")
 
     parts = []
@@ -852,7 +853,7 @@ with tabs[0]:
     parts.append("Reach adds up campaign reach, so the number of different people is lower.")
     st.markdown(" ".join(parts))
 
-    st.subheader("Paid Awareness on Facebook")
+    st.subheader("Paid Awareness on Meta")
     c1, c2, c3 = st.columns(3)
     with c1:
         metric("Reach (monthly)", num(reach_now), chg(cur, pre, "reach_avg"), True, pm["reach"], "Sum of campaign reach per month. Multi-month ranges show the monthly average. Share of target audience: pending.")
@@ -1053,7 +1054,7 @@ with tabs[3]:
     ua, ub = D.unit_costs(ADS, CA0, CA1), D.unit_costs(ADS, CB0, CB1)
     cpm_chg = change(ub["cpm"], ua["cpm"])
     oa_c, ob_c = D.organic(POSTS, CA0, CA1), D.organic(POSTS, CB0, CB1)
-    st.markdown(f"Comparing the previous period ({C_ARNG}) with the current period ({C_BRNG}): Facebook ads cost per 1,000 impressions went from **{peso(ua['cpm'], 2)}** to **{peso(ub['cpm'], 2)}** ({pct(cpm_chg, 1, True)}) "
+    st.markdown(f"Comparing the previous period ({C_ARNG}) with the current period ({C_BRNG}): Meta ads cost per 1,000 impressions went from **{peso(ua['cpm'], 2)}** to **{peso(ub['cpm'], 2)}** ({pct(cpm_chg, 1, True)}) "
                 f"and cost per engagement from **{peso(ua['cpe'], 3)}** to **{peso(ub['cpe'], 3)}**; the Facebook page's engagement rate went from **{pct(oa_c['er'], 2)}** to **{pct(ob_c['er'], 2)}**. "
                 "Status compares each channel in the current period with the previous one, using proposed thresholds that are still to be calibrated with the client.")
     if CN == 1:
@@ -1063,7 +1064,7 @@ with tabs[3]:
     st.subheader("Paid Channels")
 
     def fb_row(u, label_period, status, what):
-        return {"Channel": "Facebook ads", "Period": label_period, "Status": status, "Spend": peso(u["spend"]), "Impressions": num(u["impressions"]), "CPM": peso(u["cpm"], 2),
+        return {"Channel": "Meta ads", "Period": label_period, "Status": status, "Spend": peso(u["spend"]), "Impressions": num(u["impressions"]), "CPM": peso(u["cpm"], 2),
                 "Reach": num(u["reach"]), "Cost per 1,000 reached": peso(u["cpr1000"], 2), "Frequency": f"{u['frequency']:.2f}", "CTR": pct(u["ctr"], 2) if u["clicks_ok"] else "n/a",
                 "CPC": peso(u["cpc"], 2) if u["clicks_ok"] else "n/a", "Cost per engagement": peso(u["cpe"], 3), "What changed": what}
 
@@ -1109,8 +1110,8 @@ with tabs[3]:
         _gap_c = [m for m in (CA0 + i for i in range(2 * CN)) if m not in _tt_all]
         st.caption("Internal: the SSOT has no TikTok videos for " + ", ".join(mlabel(m) for m in _gap_c) + ".")
 
-    # ---- Facebook ads by campaign type
-    st.subheader("Facebook Ads by Campaign Type")
+    # ---- Meta ads by campaign type
+    st.subheader("Meta Ads by Campaign Type")
     oca, ocb = D.unit_costs_by_objective(ADS, CA0, CA1), D.unit_costs_by_objective(ADS, CB0, CB1)
     _names = {"reach": "Reach campaigns", "boosting": "Boosting (engagement, views)", "pagelikes": "Page-like campaigns", "other": "Other"}
 
@@ -1133,11 +1134,11 @@ with tabs[3]:
     if type_rows:
         _tot_a = {"spend": ua["spend"], "impressions": ua["impressions"], "cpm": ua["cpm"], "reach": ua["reach"], "cpr1000": ua["cpr1000"], "cpe": ua["cpe"], "frequency": ua["frequency"]}
         _tot_b = {"spend": ub["spend"], "impressions": ub["impressions"], "cpm": ub["cpm"], "reach": ub["reach"], "cpr1000": ub["cpr1000"], "cpe": ub["cpe"], "frequency": ub["frequency"]}
-        type_rows.append(type_row("All Facebook ads", C_ARNG, _tot_a, ua["spend"], "Baseline", ""))
-        type_rows.append(type_row("All Facebook ads", C_BRNG, _tot_b, ub["spend"], status_of(cpm_chg, True), chg_text("Cost per mille", cpm_chg)))
+        type_rows.append(type_row("All Meta ads", C_ARNG, _tot_a, ua["spend"], "Baseline", ""))
+        type_rows.append(type_row("All Meta ads", C_BRNG, _tot_b, ub["spend"], status_of(cpm_chg, True), chg_text("Cost per mille", cpm_chg)))
         show_table(type_rows)
     else:
-        st.info("No Facebook ads in these periods.")
+        st.info("No Meta ads in these periods.")
     st.caption("Reach, boosting (engagement and video views) and page-like campaigns have very different costs, so compare each type with itself. Status uses the change in cost per mille from the previous period to the current one; lower is better. "
                "Improved is 5% lower or better, Steady is within 5%, Slightly weaker is up to 15% higher, Weaker is beyond that. A type with under 2% of the spend gets no status. These are proposed thresholds, to be calibrated with the client.")
 

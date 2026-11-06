@@ -403,7 +403,7 @@ def account_period(acct, m0, m1) -> dict:
 
 
 def unit_costs(ads, m0, m1) -> dict:
-    """Unit costs of the paid Facebook ads in the months m0..m1, and what each PHP 1,000 of spend bought.
+    """Unit costs of the paid Meta ads in the months m0..m1, and what each PHP 1,000 of spend bought.
     Clicks and ThruPlays only exist in the exports from Mar 2026, so cost per click / per ThruPlay are only filled when every month of the range has them."""
     d = _in(ads, m0, m1)
     months = [m0 + i for i in range((m1 - m0).n + 1)]
@@ -454,22 +454,22 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None, tt_platform=None)
         fm = dict(zip(follows["month"], follows["follows"].astype(float)))
         fa, fb = sum(fm[m] for m in months[:n]), sum(fm[m] for m in months[n:])
         new_follows = [card("New Facebook follows", fa, fb, True, "num", "new follows before unfollows", series=lambda m: fm[m])]
-        follows_per_k = [card("New follows per ₱1,000", _div(fa * 1000, ca["spend"]), _div(fb * 1000, cb["spend"]), True, "num1", "all new follows / Facebook ad spend")]
+        follows_per_k = [card("New follows per ₱1,000", _div(fa * 1000, ca["spend"]), _div(fb * 1000, cb["spend"]), True, "num1", "all new follows / Meta ad spend")]
     else:
         new_follows, follows_per_k = [], []
     acct_ok = acct is not None and len(acct) > 0 and all(m in set(acct["month"]) for m in months)
     if acct_ok:    # Meta's account totals cover every month, so clicks need no campaign data
         xa, xb = account_period(acct, a0, a1), account_period(acct, b0, b1)
-        unique = [card("Unique people reached per month", xa["reach_avg"], xb["reach_avg"], True, "num", "Facebook ads, each person counted once a month",
+        unique = [card("Unique people reached per month", xa["reach_avg"], xb["reach_avg"], True, "num", "Meta ads, each person counted once a month",
                        series=lambda m: account_period(acct, m, m)["reach_avg"])]
         true_freq = [card("True frequency", xa["frequency"], xb["frequency"], None, "freq", "impressions / unique reach")]
-        ad_impr = [card("Ad impressions", xa["impressions"], xb["impressions"], True, "num", "Facebook ads, Meta's account totals (every time an ad was shown, repeats included)",
+        ad_impr = [card("Ad impressions", xa["impressions"], xb["impressions"], True, "num", "Meta ads, Meta's account totals (every time an ad was shown, repeats included)",
                         series=lambda m: account_period(acct, m, m)["impressions"])]
         clicks = [card("Click-through rate (CTR)", xa["ctr"], xb["ctr"], True, "rate", "clicks / impressions"),
                   card("Cost per click", xa["cpc"], xb["cpc"], False, "peso2", "lower is better")]
     else:          # campaign exports only have clicks from Mar 2026
         unique, true_freq = [], []
-        ad_impr = [card("Ad impressions", ca["impressions"], cb["impressions"], True, "num", "Facebook ads, Ads Manager campaign rows", series=lambda m: paid(ads, m, m)["impressions"], paid_series=True)]
+        ad_impr = [card("Ad impressions", ca["impressions"], cb["impressions"], True, "num", "Meta ads, Ads Manager campaign rows", series=lambda m: paid(ads, m, m)["impressions"], paid_series=True)]
         clicks = [card("Click-through rate (CTR)", ua["ctr"], ub["ctr"], True, "rate", "clicks / impressions"),
                   card("Cost per click", ua["cpc"], ub["cpc"], False, "peso2", "lower is better")] if (ua["clicks_ok"] and ub["clicks_ok"]) else []
     pa, pb = platform_period(tt_platform, a0, a1), platform_period(tt_platform, b0, b1)
@@ -480,15 +480,15 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None, tt_platform=None)
         card("TikTok engagements (videos)", ta["engagements"], tb["engagements"], True, "num", "likes, comments and shares on the videos posted",
              series=lambda m: tiktok(tt, m, m)["engagements"], compared=tt_ok)]
     platform = [c for c in platform if c["label"] != "TikTok engagements"]
-    slide = ([card("Total reach", ca["reach"], cb["reach"], True, "num", "sum of the monthly campaign reach, Facebook ads", series=lambda m: paid(ads, m, m)["reach"], paid_series=True),
-              card("Ad post engagements", ua["engagements"], ub["engagements"], True, "num", "Facebook ads, as counted by Ads Manager", series=lambda m: unit_costs(ads, m, m)["engagements"], paid_series=True)]
+    slide = ([card("Total reach", ca["reach"], cb["reach"], True, "num", "sum of the monthly campaign reach, Meta ads", series=lambda m: paid(ads, m, m)["reach"], paid_series=True),
+              card("Ad post engagements", ua["engagements"], ub["engagements"], True, "num", "Meta ads, as counted by Ads Manager", series=lambda m: unit_costs(ads, m, m)["engagements"], paid_series=True)]
              + ad_impr
              + [card("TikTok video views", ta["views"], tb["views"], True, "num", series=lambda m: tiktok(tt, m, m)["views"], compared=tt_ok)]
              + tt_eng)
     groups = [
         ("Audience Growth", [
             slide,
-            [card("Average reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Facebook ads, monthly average of the campaign reach", series=lambda m: paid(ads, m, m)["reach"], paid_series=True)]
+            [card("Average reach per month", ca["reach_avg"], cb["reach_avg"], True, "num", "Meta ads, monthly average of the campaign reach", series=lambda m: paid(ads, m, m)["reach"], paid_series=True)]
             + new_follows + [card("Average reach per Facebook post", oa["reach_per_post"], ob["reach_per_post"], True, "num", series=lambda m: organic(posts, m, m)["reach_per_post"]),
              card("Facebook post views (impressions)", oa["views"], ob["views"], True, "num", "Meta Views: every time a page post was shown or played, repeats included. Organic and boosted posts together. Not the number of people.", series=lambda m: organic(posts, m, m)["views"]),
              ]]
@@ -500,7 +500,7 @@ def half_cards(ads, posts, tt, a0, n, acct=None, follows=None, tt_platform=None)
             follows_per_k + [card("Ad engagement rate", ua["er_impr"], ub["er_impr"], True, "rate", "engagements / impressions"),
              card("Impressions per ₱1,000", ua["impr_per_k"], ub["impr_per_k"], True, "num", "higher is better")] + clicks]),
         ("Spend and Activity", [
-            [card("Ad spend per month", ca["spend"] / n, cb["spend"] / n, None, "peso0", "Facebook ads"),
+            [card("Ad spend per month", ca["spend"] / n, cb["spend"] / n, None, "peso0", "Meta ads"),
              card("Cost per 1,000 reached", ua["cpr1000"], ub["cpr1000"], False, "peso2", "lower is better"),
              card("Reach per ₱1,000", ua["reach_per_k"], ub["reach_per_k"], True, "num", "higher is better"),
             ] + ([] if acct_ok else [card("Average frequency", ca["frequency"], cb["frequency"], None, "freq", "impressions / reach (campaign reach added up)")]) + true_freq,

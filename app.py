@@ -744,18 +744,18 @@ with tab_cards:
     st.html(KC_CSS)
     k1, k2, k3 = st.columns([1, 1, 2], vertical_alignment="bottom")
     KN = k1.selectbox("Months per period", PERIOD_OPTIONS, index=3, key="kc_n", format_func=period_label,
-                      help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
-    banner("Brand Awareness KPIs: Month by Month" if KN == 1 else "Brand Awareness KPIs: First Half vs Second Half")
+                      help="The current period is compared with the period of the same length just before it. 1 compares the current month with the month before.")
+    banner("Brand Awareness KPIs: Current vs Previous Month" if KN == 1 else f"Brand Awareness KPIs: Current vs Previous {KN} Months")
     KA0 = current_month_start(k2, "kc", KN, LASTM)
     KA1, KB0, KB1 = KA0 + (KN - 1), KA0 + KN, KA0 + (2 * KN - 1)
     k3.caption("This tab has its own selector: it compares the current month (or the months ending with it) with the same number of months just before.")
-    _ka, _kb = period_names(KN)
+    _ka, _kb = (("Previous month", "Current month") if KN == 1 else (f"Previous {KN} months", f"Current {KN} months"))   # this tab picks the current month, so the periods are current vs previous
     KVS = _ka.lower()
     KMONTHS = [KA0 + i for i in range(2 * KN)]
     st.markdown(f"**{_kb} ({month_range(KB0, KB1)})** against the **{_ka.lower()} ({month_range(KA0, KA1)})**. "
-                "Each card shows the latest figure, how much it moved, and what it was before.")
+                "Each card shows the current figure, how much it moved, and what it was before.")
     st.caption("Green means better for BPP, red means worse, grey means about the same (within 2%). Arrows show the direction: for costs, down is better. "
-               "The small charts show each month, the first period in grey and the second in blue; hover for the values.")
+               "The small charts show each month, the previous period in grey and the current one in blue; hover for the values.")
 
     # Slides button lives in the sidebar (easier to see): the 2-slide half vs half review ("Platform Distribution Level Up", halves layout) for the periods chosen
     # on this tab, built from the numbers on this page. It is drawn from here because the periods are chosen here; Streamlit puts it in the sidebar.
@@ -814,7 +814,7 @@ with tab_cards:
                 st.caption(f"Internal: followers, net followers and unfollows for the whole period come from the daily Meta page insights (page_follows and unfollows), counted to the end of each period. "
                            f"Unfollows are known per day, so net new followers per period could be shown; the daily follows add up to {S['follows']['follows'].sum():,.0f}, the same as the Business Suite Follows.csv.")
             elif INTERNAL and _fb_end:
-                st.caption(f"Internal: Business Suite shows {S['page']['followers_lifetime']:,.0f} lifetime followers, while the supplied Facebook followers figure for the end of the second period is different "
+                st.caption(f"Internal: Business Suite shows {S['page']['followers_lifetime']:,.0f} lifetime followers, while the supplied Facebook followers figure for the end of the current period is different "
                            "(timing or definition not confirmed).")
             if INTERNAL and not S.get("fb_followers_api"):
                 _csv, _screen = S["follows"]["follows"].sum(), S["page"].get("net_follows", 0) + S["page"].get("unfollows", 0)
@@ -1010,16 +1010,16 @@ with tabs[3]:
     banner("Channel Diagnostics")
     cs1, cs2, cs3 = st.columns([1, 1, 2], vertical_alignment="bottom")
     CN = cs1.selectbox("Months per period", PERIOD_OPTIONS, index=3, key="ch_n", format_func=period_label,
-                       help="The first period is followed straight away by a second period of the same length. 1 compares one month with the next.")
+                       help="The current period is compared with the period of the same length just before it. 1 compares the current month with the month before.")
     CA0 = current_month_start(cs2, "ch", CN, _lm)
     CA1, CB0, CB1 = CA0 + (CN - 1), CA0 + CN, CA0 + (2 * CN - 1)
-    C_A, C_B = (f"First {CN} Months", f"Next {CN} Months") if CN > 1 else ("First Month", "Next Month")
+    C_A, C_B = (f"Previous {CN} Months", f"Current {CN} Months") if CN > 1 else ("Previous Month", "Current Month")
     _rng = lambda a, b: mlabel(a) if a == b else f"{mlabel(a)} to {mlabel(b)}"
     C_ARNG, C_BRNG = _rng(CA0, CA1), _rng(CB0, CB1)
     cs3.caption("This tab has its own selector: it compares the current month (or the months ending with it) with the same number of months just before.")
 
     def status_of(chg, lower_is_better=True):
-        """Efficiency status from the change in one metric vs the first period (the PediaWell thresholds, proposed and still to be calibrated)."""
+        """Efficiency status from the change in one metric vs the previous period (the PediaWell thresholds, proposed and still to be calibrated)."""
         if chg is None or pd.isna(chg):
             return "n/a"
         c = -chg if lower_is_better else chg
@@ -1053,9 +1053,9 @@ with tabs[3]:
     ua, ub = D.unit_costs(ADS, CA0, CA1), D.unit_costs(ADS, CB0, CB1)
     cpm_chg = change(ub["cpm"], ua["cpm"])
     oa_c, ob_c = D.organic(POSTS, CA0, CA1), D.organic(POSTS, CB0, CB1)
-    st.markdown(f"Comparing {C_ARNG} with {C_BRNG}: Facebook ads cost per 1,000 impressions went from **{peso(ua['cpm'], 2)}** to **{peso(ub['cpm'], 2)}** ({pct(cpm_chg, 1, True)}) "
+    st.markdown(f"Comparing the previous period ({C_ARNG}) with the current period ({C_BRNG}): Facebook ads cost per 1,000 impressions went from **{peso(ua['cpm'], 2)}** to **{peso(ub['cpm'], 2)}** ({pct(cpm_chg, 1, True)}) "
                 f"and cost per engagement from **{peso(ua['cpe'], 3)}** to **{peso(ub['cpe'], 3)}**; the Facebook page's engagement rate went from **{pct(oa_c['er'], 2)}** to **{pct(ob_c['er'], 2)}**. "
-                "Status compares each channel in the second period with the first, using proposed thresholds that are still to be calibrated with the client.")
+                "Status compares each channel in the current period with the previous one, using proposed thresholds that are still to be calibrated with the client.")
     if CN == 1:
         st.caption("Month by month: a single month moves more than a 3 to 6 month average (campaign mix, a boosted post), so read the statuses as a quick signal, not a trend.")
 
@@ -1128,7 +1128,7 @@ with tabs[3]:
         if ra is not None:
             type_rows.append(type_row(_names[obj], C_ARNG, ra, ua["spend"], "Baseline", ""))
         if rb is not None:
-            what = chg_text("Cost per mille", chg_o) if chg_o is not None else ("Too little spend to judge" if small else ("No spend in the first period" if ra is None else ""))
+            what = chg_text("Cost per mille", chg_o) if chg_o is not None else ("Too little spend to judge" if small else ("No spend in the previous period" if ra is None else ""))
             type_rows.append(type_row(_names[obj], C_BRNG, rb, ub["spend"], status_of(chg_o, True), what))
     if type_rows:
         _tot_a = {"spend": ua["spend"], "impressions": ua["impressions"], "cpm": ua["cpm"], "reach": ua["reach"], "cpr1000": ua["cpr1000"], "cpe": ua["cpe"], "frequency": ua["frequency"]}
@@ -1138,7 +1138,7 @@ with tabs[3]:
         show_table(type_rows)
     else:
         st.info("No Facebook ads in these periods.")
-    st.caption("Reach, boosting (engagement and video views) and page-like campaigns have very different costs, so compare each type with itself. Status uses the change in cost per mille from the first period to the second; lower is better. "
+    st.caption("Reach, boosting (engagement and video views) and page-like campaigns have very different costs, so compare each type with itself. Status uses the change in cost per mille from the previous period to the current one; lower is better. "
                "Improved is 5% lower or better, Steady is within 5%, Slightly weaker is up to 15% higher, Weaker is beyond that. A type with under 2% of the spend gets no status. These are proposed thresholds, to be calibrated with the client.")
 
 # ===== Ad Designs: the ads themselves (picture, topic, results), best first =====

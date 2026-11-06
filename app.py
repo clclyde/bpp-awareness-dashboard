@@ -475,7 +475,7 @@ with tab_cmp:
     A_NAME, B_NAME = period_names(N)
     A_TITLE, B_TITLE = A_NAME.title(), B_NAME.title()               # headings in Title Case, running text uses the lowercase names
     A_RNG, B_RNG = month_range(A0, A1), month_range(B0, B1)
-    sel3.caption("This view has its own period selector. The sidebar months drive the other tabs.")
+    sel3.caption("This tab has its own period selectors. Overview, Awareness Trend, Content and Ad Designs share a month range at the top of each of those tabs.")
 
     ca, cb = D.paid(ADS, A0, A1), D.paid(ADS, B0, B1)
     oa, ob = D.organic(POSTS, A0, A1), D.organic(POSTS, B0, B1)
@@ -757,23 +757,26 @@ with tab_cards:
     st.caption("Green means better for BPP, red means worse, grey means about the same (within 2%). Arrows show the direction: for costs, down is better. "
                "The small charts show each month, the first period in grey and the second in blue; hover for the values.")
 
-    # Slides: the 2-slide half vs half review ("Platform Distribution Level Up", halves layout) for the periods chosen above, built from the numbers on this page.
+    # Slides button lives in the sidebar (easier to see): the 2-slide half vs half review ("Platform Distribution Level Up", halves layout) for the periods chosen
+    # on this tab, built from the numbers on this page. It is drawn from here because the periods are chosen here; Streamlit puts it in the sidebar.
     _dk = f"{KA0}|{KN}|{INTERNAL}"
-    db1, db2 = st.columns([1, 2.4], vertical_alignment="center")
-    if db1.button("Build slides (.pptx)", key="kc_deck_build", help="Builds the half vs half review deck for the periods above from the numbers on this dashboard."):
-        try:
-            import report_deck as RD   # python-pptx is only needed here, so the dashboard still runs without it
+    with st.sidebar:
+        st.markdown("### Slides")
+        st.caption(f"Half vs half review for the KPI Cards periods: {month_range(KB0, KB1)} against {month_range(KA0, KA1)}.")
+        if st.button("Build slides (.pptx)", key="kc_deck_build", help="Builds the half vs half review deck for the KPI Cards periods from the numbers on this dashboard."):
+            try:
+                import report_deck as RD   # python-pptx is only needed here, so the dashboard still runs without it
 
-            st.session_state["kc_deck"] = (_dk, *RD.halves_bytes(S, KA0, KN, INTERNAL))
-        except ImportError:
-            st.error("The slide builder needs python-pptx (see requirements.txt).")
-        except Exception as e:
-            st.error(f"Could not build the slides ({type(e).__name__}).")
-    _deck = st.session_state.get("kc_deck")
-    if _deck and _deck[0] == _dk:
-        db2.download_button(f"Download {_deck[1]}", _deck[2], file_name=_deck[1], key="kc_deck_dl",
-                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
-        st.caption("A draft: check the numbers against Meta and TikTok before it goes to the client.")
+                st.session_state["kc_deck"] = (_dk, *RD.halves_bytes(S, KA0, KN, INTERNAL))
+            except ImportError:
+                st.error("The slide builder needs python-pptx (see requirements.txt).")
+            except Exception as e:
+                st.error(f"Could not build the slides ({type(e).__name__}).")
+        _deck = st.session_state.get("kc_deck")
+        if _deck and _deck[0] == _dk:
+            st.download_button(f"Download {_deck[1]}", _deck[2], file_name=_deck[1], key="kc_deck_dl",
+                               mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+            st.caption("A draft: check the numbers against Meta and TikTok before it goes to the client.")
 
     HC = D.half_cards(ADS, POSTS, TT, KA0, KN, S["acct"], S["follows"], S["tt_platform"])   # the same cards, in the same order, as the deck (report_deck.py --halves)
     f2 = lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"
@@ -1220,7 +1223,7 @@ with tabs[4]:
                         "Reach": st.column_config.NumberColumn(format="localized"), "Engagement rate": st.column_config.NumberColumn(format="percent"),
                         "Click-through": st.column_config.NumberColumn(format="percent"), "Per 1,000 reached (₱)": st.column_config.NumberColumn(format="%.2f"),
                         "Link": st.column_config.LinkColumn(display_text="Open")})
-                st.caption("Results are for the months chosen in the sidebar, from Meta's ad-level data (ex-VAT spend). A design's reach is its own people reached; designs overlap, so do not add reach up across designs. "
+                st.caption("Results are for the months chosen above, from Meta's ad-level data (ex-VAT spend). A design's reach is its own people reached; designs overlap, so do not add reach up across designs. "
                            "Engagement rate = reactions, comments and shares divided by reach. Pictures are Meta's centred square previews, so tall or wide designs are cropped; open the post to see the full design. "
                            "Compare designs of the same goal: reach and engagement campaigns are built for different results.")
 

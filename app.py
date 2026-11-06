@@ -1208,13 +1208,14 @@ with tabs[4]:
                                 f'<div class="dz-topic">{sub}</div><div>{tags}</div>'
                                 f'<div class="dz-grid">'
                                 f'<div><div class="dz-lab">Reach</div><div class="dz-val">{num(row["reach"])}</div></div>'
+                                f'<div><div class="dz-lab">Impressions</div><div class="dz-val">{num(row["impressions"])}</div></div>'
                                 f'<div><div class="dz-lab">Spend</div><div class="dz-val">{peso(row["spend"])}</div></div>'
-                                f'<div><div class="dz-lab">Engagement rate</div><div class="dz-val">{pct(row["er"], 2)}</div></div>'
                                 f'<div><div class="dz-lab">Per 1,000 reached</div><div class="dz-val">{peso(row["cpr"], 2)}</div></div>'
+                                f'<div><div class="dz-lab">Engagements</div><div class="dz-val">{num(row["engagements"])}</div></div>'
+                                f'<div><div class="dz-lab">Engagement rate</div><div class="dz-val">{pct(row["er"], 2)}</div></div>'
                                 f'<div><div class="dz-lab">Click-through</div><div class="dz-val">{pct(row["ctr"], 2)}</div></div>'
-                                f'<div><div class="dz-lab">{"View-through" if pd.notna(row["thru_rate"]) else "Engagements"}</div>'
-                                f'<div class="dz-val">{pct(row["thru_rate"], 1) if pd.notna(row["thru_rate"]) else num(row["engagements"])}</div></div>'
-                                f'</div><div class="dz-topic" style="margin-top:8px">{link}</div></div>')
+                                + (f'<div><div class="dz-lab">View-through</div><div class="dz-val">{pct(row["thru_rate"], 1)}</div></div>' if pd.notna(row["thru_rate"]) else "")
+                                + f'</div><div class="dz-topic" style="margin-top:8px">{link}</div></div>')
                 with st.expander("All designs in this view", icon=":material/table:"):
                     tdf = pd.DataFrame({"Design": DZ["topic"].where(DZ["topic"] != "", DZ["ad_name"]), "Format": DZ["format"], "Goal": DZ["goal"], "Audience": DZ["audience"],
                                         "Spend (₱)": DZ["spend"], "Impressions": DZ["impressions"], "Reach": DZ["reach"], "Engagement rate": DZ["er"],

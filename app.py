@@ -757,6 +757,24 @@ with tab_cards:
     st.caption("Green means better for BPP, red means worse, grey means about the same (within 2%). Arrows show the direction: for costs, down is better. "
                "The small charts show each month, the first period in grey and the second in blue; hover for the values.")
 
+    # Slides: the 2-slide half vs half review ("Platform Distribution Level Up", halves layout) for the periods chosen above, built from the numbers on this page.
+    _dk = f"{KA0}|{KN}|{INTERNAL}"
+    db1, db2 = st.columns([1, 2.4], vertical_alignment="center")
+    if db1.button("Build slides (.pptx)", key="kc_deck_build", help="Builds the half vs half review deck for the periods above from the numbers on this dashboard."):
+        try:
+            import report_deck as RD   # python-pptx is only needed here, so the dashboard still runs without it
+
+            st.session_state["kc_deck"] = (_dk, *RD.halves_bytes(S, KA0, KN, INTERNAL))
+        except ImportError:
+            st.error("The slide builder needs python-pptx (see requirements.txt).")
+        except Exception as e:
+            st.error(f"Could not build the slides ({type(e).__name__}).")
+    _deck = st.session_state.get("kc_deck")
+    if _deck and _deck[0] == _dk:
+        db2.download_button(f"Download {_deck[1]}", _deck[2], file_name=_deck[1], key="kc_deck_dl",
+                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        st.caption("A draft: check the numbers against Meta and TikTok before it goes to the client.")
+
     HC = D.half_cards(ADS, POSTS, TT, KA0, KN, S["acct"], S["follows"], S["tt_platform"])   # the same cards, in the same order, as the deck (report_deck.py --halves)
     f2 = lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"
     pts = lambda v: f"{abs(v) * 100:.2f} pts"    # change of a rate, in percentage points

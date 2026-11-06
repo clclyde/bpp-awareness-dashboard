@@ -1,3 +1,2 @@
-# Only for report_deck.py (the .pptx deck), not needed by the dashboard.
+# python-pptx now lives in requirements.txt (the dashboard's Build slides button needs it); report_deck.py runs with the same file.
 -r requirements.txt
-python-pptx==1.0.2

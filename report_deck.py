@@ -17,6 +17,7 @@ The text is rule-based (no LLM). A person still checks the numbers against Meta 
 Awareness is reported as delivery and cost: reach measures exposure, not recall.
 """
 import argparse
+import io
 import os
 import tomllib
 from pathlib import Path
@@ -163,10 +164,11 @@ def build_halves(S: dict, start: str, n: int, internal: bool, layout: str = "car
                     fm = dict(zip(S["follows"]["month"], S["follows"]["follows"].astype(float)))
                     c["series"] = [D._div(fm[m] * 1000, D.paid(ads, m, m)["spend"]) for m in HC["months"]]
     (a0, a1), (b0, b1) = HC["a"], HC["b"]
-    rng = lambda x, y: f"{mlabel(x)} to {mlabel(y)}"
-    short_rng = lambda x, y: f"{x.strftime('%b')}–{mlabel(y)}" if x.year == y.year else f"{mlabel(x)}–{mlabel(y)}"   # Apr–Sep 2026, Oct 2025–Mar 2026
+    rng = lambda x, y: mlabel(x) if x == y else f"{mlabel(x)} to {mlabel(y)}"
+    short_rng = lambda x, y: mlabel(x) if x == y else (f"{x.strftime('%b')}–{mlabel(y)}" if x.year == y.year else f"{mlabel(x)}–{mlabel(y)}")   # Apr–Sep 2026, Oct 2025–Mar 2026
     R = {"S": S, "HC": HC, "n": n, "page": S["page"], "internal": internal, "layout": layout, "a_rng": rng(a0, a1), "b_rng": rng(b0, b1), "a_short": short_rng(a0, a1), "b_short": short_rng(b0, b1),
-         "vs": f"first {n} months",
+         "vs": "first month" if n == 1 else f"first {n} months", "first_t": "first month" if n == 1 else f"first {n} months", "next_t": "next month" if n == 1 else f"next {n} months",
+         "latest_t": "latest month" if n == 1 else f"latest {n} months",
          "label": f"{rng(a0, a1)} vs {rng(b0, b1)}", "file": f"BPP_Awareness_Halves_{a0}_{n}m_{layout}"}
     return R
 
@@ -588,7 +590,7 @@ class HalvesDeck(Deck):
         tb = self.text(s, "vs ", x + pad + pw + 0.12, py, w - 2 * pad - pw - 0.12, 0.3, 13, False, self.INK, anchor=MSO_ANCHOR.MIDDLE)
         self.run(tb.text_frame.paragraphs[0], fmt(c["a"]), 13, True, self.INK)
         if self.diff(c):
-            self.text(s, f"{self.diff(c)} vs the first {n} months", x + pad, py + (0.34 if compact else 0.36), w - 2 * pad, 0.22, 11, color=self.ASH)
+            self.text(s, f"{self.diff(c)} vs the {self.R['first_t']}", x + pad, py + (0.34 if compact else 0.36), w - 2 * pad, 0.22, 11, color=self.ASH)
         if c["series"] is not None:
             self.sparkline(s, x + 0.1, y + h - 0.47, w - 0.2, 0.42, c["series"])
 
@@ -651,7 +653,7 @@ class HalvesDeck(Deck):
         """The remaining KPIs as rows: name, the number now, the change pill, the previous number and the difference."""
         fmt_of = lambda c: self.KIND[c["kind"]][0]
         cols = {"name": 0.9, "val": 5.2, "chg": 7.0, "prev": 8.7, "diff": 10.5}
-        for k, label in (("name", "Metric"), ("val", f"Next {self.R['n']} months"), ("chg", "Change"), ("prev", f"First {self.R['n']} months"), ("diff", "Difference")):
+        for k, label in (("name", "Metric"), ("val", self.R["next_t"].capitalize()), ("chg", "Change"), ("prev", self.R["first_t"].capitalize()), ("diff", "Difference")):
             self.text(s, label, cols[k], y, 1.8 if k != "name" else 4, 0.26, 11, True, self.ASH)
         rh = min(0.32, max_h / max(len(cards), 1))
         y0 = y + 0.3
@@ -724,9 +726,9 @@ class HalvesDeck(Deck):
                   f"Over the whole period the page gained {num(pg['net_follows'])} net followers and has {num(pg['followers_lifetime'])} in total. ")
                  if pg.get("net_follows") and pg.get("followers_lifetime") else "")
         bar = ("Note:", (f"New follows are counted before unfollows. {whole}" if fol else "") + "Facebook page posts include boosted posts, so part of this reach is paid.")
-        notes = (f"How to read each card: the big number is the latest {n} months ({R['b_rng']}); the filled pill is the change against the first {n} months ({R['a_rng']}), "
+        notes = (f"How to read each card: the big number is the {R['latest_t']} ({R['b_rng']}); the filled pill is the change against the {R['first_t']} ({R['a_rng']}), "
                  "green when it got better, orange when it got worse, grey when it is about the same (within 2%) or neither better nor worse; the line underneath is the previous number. "
-                 f"The small chart, where there is one, shows each month: the first {n} months in light green and the next {n} in dark green.\n\n"
+                 f"The small chart, where there is one, shows each month: the {R['first_t']} in light green and the {R['next_t']} in dark green.\n\n"
                  + (("Facebook followers is the page's follower count on the last day of each period (Meta page insights); TikTok followers, TikTok reach and TikTok engagements are TikTok's own figures for each period, supplied by the team (they are not sums of videos, and TikTok reach is not the same as TikTok video views). "
                      "New Facebook follows is the total of the daily new follows from the Meta page insights for the months of the period, counted before unfollows. ")
                     if R["S"].get("fb_followers_api") else
@@ -813,8 +815,8 @@ class HalvesDeck(Deck):
         stack = sp["stack"] and len(cards) <= 9        # more than nine cards no longer fit three to a row with the pill under the number: use two columns with the pill beside it
         rows_n = -(-len(cards) // (3 if stack else 2))
         row_h = 1.15 if stack else min(0.78, (6.65 - 1.75 - 0.92 - (0.7 if sp["bar"] else 0)) / rows_n)   # more metrics squeeze the rows; a note bar needs its own room below
-        y = self.half_panel(s, self.X0, 1.75, pw, row_h, f"FIRST {n} MONTHS", R["a_rng"], cards, False, stack)
-        self.half_panel(s, self.X0 + pw + 0.3, 1.75, pw, row_h, f"NEXT {n} MONTHS", R["b_rng"], cards, True, stack)
+        y = self.half_panel(s, self.X0, 1.75, pw, row_h, R["first_t"].upper(), R["a_rng"], cards, False, stack)
+        self.half_panel(s, self.X0 + pw + 0.3, 1.75, pw, row_h, R["next_t"].upper(), R["b_rng"], cards, True, stack)
         if sp["bar"]:
             self.bar(s, y + 0.12, *sp["bar"])
 
@@ -825,6 +827,14 @@ class HalvesDeck(Deck):
             draw(s, sp)
             self.notes(s, sp["notes"])
         return self.prs
+
+
+def halves_bytes(S: dict, start, n: int, internal: bool = False, layout: str = "halves"):
+    """For the dashboard's download button: the half vs half review of the n months from `start` against the next n months, as (file name, .pptx bytes)."""
+    R = build_halves(S, str(start), n, internal, layout)
+    buf = io.BytesIO()
+    HalvesDeck(R).build().save(buf)
+    return R["file"] + ".pptx", buf.getvalue()
 
 
 def main():
